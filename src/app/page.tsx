@@ -36,6 +36,7 @@ import {
   Settings,
 } from 'lucide-react';
 import Dashboard from '@/components/dashboard';
+import Link from 'next/link';
 
 export default function HomePage() {
   return (
@@ -80,11 +81,15 @@ export default function HomePage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
-              <Button variant="outline">
-                <GmailIcon className="mr-2 h-4 w-4" /> Connect Gmail
+              <Button variant="outline" asChild>
+                <Link href="/api/oauth/google/start">
+                  <GmailIcon className="mr-2 h-4 w-4" /> Connect Gmail
+                </Link>
               </Button>
-              <Button variant="outline">
-                <OutlookIcon className="mr-2 h-4 w-4" /> Connect Outlook
+              <Button variant="outline" asChild>
+                <Link href="/api/oauth/microsoft/start">
+                  <OutlookIcon className="mr-2 h-4 w-4" /> Connect Outlook
+                </Link>
               </Button>
             </CardContent>
           </Card>
