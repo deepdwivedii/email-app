@@ -57,9 +57,11 @@ export default function DashboardLayout({
         <SidebarContent>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive tooltip="Dashboard">
-                <Home />
-                <span>Dashboard</span>
+              <SidebarMenuButton asChild isActive tooltip="Dashboard">
+                <Link href="/dashboard">
+                  <Home />
+                  <span>Dashboard</span>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

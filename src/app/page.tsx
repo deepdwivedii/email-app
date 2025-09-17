@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 
-export default function SplashPage() {
+export default function Page() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
       <div className="flex flex-col items-center text-center">
@@ -25,13 +25,8 @@ export default function SplashPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
            <Button variant="outline" size="lg" asChild>
-            <Link href="/api/oauth/google/start">
-              <GmailIcon className="mr-2 h-5 w-5" /> Connect Gmail
-            </Link>
-          </Button>
-          <Button variant="outline" size="lg" asChild>
-            <Link href="/api/oauth/microsoft/start">
-              <OutlookIcon className="mr-2 h-5 w-5" /> Connect Outlook
+            <Link href="/dashboard">
+              <GmailIcon className="mr-2 h-5 w-5" /> Continue to Dashboard
             </Link>
           </Button>
         </CardContent>
