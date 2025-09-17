@@ -25,8 +25,13 @@ export default function Page() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
            <Button variant="outline" size="lg" asChild>
-            <Link href="/dashboard">
-              <GmailIcon className="mr-2 h-5 w-5" /> Continue to Dashboard
+            <Link href="/api/oauth/google/start">
+              <GmailIcon className="mr-2 h-5 w-5" /> Connect with Gmail
+            </Link>
+          </Button>
+           <Button variant="outline" size="lg" asChild>
+            <Link href="/api/oauth/microsoft/start">
+              <OutlookIcon className="mr-2 h-5 w-5" /> Connect with Outlook
             </Link>
           </Button>
         </CardContent>
