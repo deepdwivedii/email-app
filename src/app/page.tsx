@@ -38,7 +38,7 @@ import {
 import Dashboard from '@/components/dashboard';
 import Link from 'next/link';
 
-export default function HomePage() {
+export default function Home() {
   return (
     <SidebarProvider>
       <Sidebar>
