@@ -11,9 +11,14 @@ export default function Page() {
           <AppLogo className="h-8 w-8 text-primary" />
           <span className="font-headline text-lg font-bold">Header Harbor</span>
         </Link>
-        <Button variant="outline" asChild>
-          <Link href="/dashboard">Continue to Dashboard</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard">Dashboard</Link>
+          </Button>
+          <Button asChild>
+            <Link href="/connect">Connect</Link>
+          </Button>
+        </div>
       </header>
       <main className="flex-1">
         <section className="relative h-[60vh] w-full">
@@ -34,25 +39,16 @@ export default function Page() {
               Header Harbor analyzes your email headers to identify and help you
               unsubscribe from unwanted newsletters and marketing lists.
             </p>
-          </div>
-        </section>
-        <section className="py-12 md:py-24">
-          <div className="container mx-auto max-w-4xl space-y-8 px-4 text-center">
-            <h2 className="font-headline text-3xl font-bold">
-              Connect Your Account
-            </h2>
-            <p className="mx-auto max-w-2xl text-muted-foreground">
-              Securely connect your Gmail or Outlook account to get started. We
-              only ever read email headers, never the content of your emails.
-            </p>
             <div className="flex flex-col justify-center gap-4 sm:flex-row">
-              <Button size="lg" className="w-full sm:w-auto">
-                <GmailIcon className="mr-2 h-5 w-5" />
-                Connect with Gmail
+              <Button size="lg" asChild className="w-full sm:w-auto">
+                <Link href="/connect">
+                  <GmailIcon className="mr-2 h-5 w-5" /> Connect with Gmail
+                </Link>
               </Button>
-              <Button size="lg" className="w-full sm:w-auto">
-                <OutlookIcon className="mr-2 h-5 w-5" />
-                Connect with Outlook
+              <Button size="lg" variant="secondary" asChild className="w-full sm:w-auto">
+                <Link href="/connect">
+                  <OutlookIcon className="mr-2 h-5 w-5" /> Connect with Outlook
+                </Link>
               </Button>
             </div>
           </div>
@@ -60,7 +56,8 @@ export default function Page() {
       </main>
       <footer className="border-t py-6">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} Header Harbor. All rights reserved.
+          © {new Date().getFullYear()} Header Harbor. All rights reserved. ·{' '}
+          <Link href="/privacy" className="underline">Privacy</Link>
         </div>
       </footer>
     </div>
