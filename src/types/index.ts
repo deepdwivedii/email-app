@@ -5,6 +5,7 @@ export type Email = {
   subject: string;
   date: string;
   listUnsubscribe?: string;
+  listUnsubscribePost?: string;
 };
 
 export type DomainInfo = {
@@ -14,4 +15,6 @@ export type DomainInfo = {
   category: 'Marketing' | 'Social' | 'Transactional' | 'Updates' | 'Other';
   isUnsubscribed: boolean;
   emails: Email[];
+  // Optional inventory document id to allow server-side status updates
+  inventoryId?: string;
 };

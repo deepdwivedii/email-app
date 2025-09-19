@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listInventory } from '@/lib/server/db';
+import { listInventory, messagesCol } from '@/lib/server/db';
 import { aggregateEmailsByDomain, mockEmails } from '@/lib/data';
 
 export async function GET(req: NextRequest) {
@@ -27,17 +27,48 @@ export async function GET(req: NextRequest) {
       category: d.category,
       isUnsubscribed: d.isUnsubscribed,
       emails: d.emails,
+      // No inventory id in mock mode
+      inventoryId: undefined,
     }));
     return NextResponse.json({ domains });
   }
 
-  const domains = items.map((inv) => ({
-    domain: inv.rootDomain,
-    count: inv.msgCount,
-    lastSeen: new Date(inv.lastSeen).toISOString(),
-    category: 'Other',
-    isUnsubscribed: inv.status !== 'active',
-    emails: [],
+  // For each inventory item, fetch up to 5 recent messages to power UI actions
+  const domains = await Promise.all(items.map(async (inv) => {
+    let emails: any[] = [];
+    try {
+      const msgsSnap = await messagesCol()
+        .where('mailboxId', '==', inv.mailboxId)
+        .where('rootDomain', '==', inv.rootDomain)
+        .orderBy('receivedAt', 'desc')
+        .limit(5)
+        .get();
+      emails = msgsSnap.docs.map((d) => {
+        const m = d.data() as any;
+        return {
+          id: m.id,
+          from: m.from || '',
+          to: m.to || '',
+          subject: m.subject || '',
+          date: new Date(m.receivedAt).toISOString(),
+          listUnsubscribe: m.listUnsubscribe,
+          listUnsubscribePost: m.listUnsubscribePost,
+        };
+      });
+    } catch (err) {
+      console.warn('Message fetch skipped for', inv.rootDomain, (err as Error)?.message);
+    }
+
+    return {
+      domain: inv.rootDomain,
+      count: inv.msgCount,
+      lastSeen: new Date(inv.lastSeen).toISOString(),
+      category: 'Other',
+      isUnsubscribed: inv.status !== 'active',
+      emails,
+      inventoryId: inv.id,
+      mailboxId: inv.mailboxId,
+    };
   }));
 
   return NextResponse.json({ domains });

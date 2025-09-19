@@ -45,9 +45,38 @@ export default function DomainTable({ domains }: { domains: DomainInfo[] }) {
   const [openStates, setOpenStates] = React.useState<Record<string, boolean>>(
     {}
   );
+  const [localDomains, setLocalDomains] = React.useState(domains);
+  React.useEffect(() => setLocalDomains(domains), [domains]);
 
   const toggleRow = (domain: string) => {
     setOpenStates((prev) => ({ ...prev, [domain]: !prev[domain] }));
+  };
+
+  const handleUnsubscribeDomain = async (d: DomainInfo) => {
+    const firstEmail = d.emails.find((e) => e.listUnsubscribe) || d.emails[0];
+    if (!firstEmail) return;
+
+    try {
+      const res = await fetch('/api/unsubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listUnsubscribe: firstEmail.listUnsubscribe,
+          listUnsubscribePost: firstEmail.listUnsubscribePost,
+          inventoryId: d.inventoryId,
+        }),
+      });
+      const j = await res.json();
+      if (res.ok && (j.status === 'ok' || j.status === 'ack')) {
+        setLocalDomains((prev) =>
+          prev.map((x) =>
+            x.domain === d.domain ? { ...x, isUnsubscribed: true } : x
+          )
+        );
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   if (!domains.length) {
@@ -87,6 +116,7 @@ export default function DomainTable({ domains }: { domains: DomainInfo[] }) {
         </TableHeader>
         <TableBody>
           {domains.map((domainInfo) => {
+            const domainInfoLocal = localDomains.find(d => d.domain === domainInfo.domain) || domainInfo;
             const isOpen = openStates[domainInfo.domain] || false;
             return (
               <React.Fragment key={domainInfo.domain}>
@@ -123,7 +153,7 @@ export default function DomainTable({ domains }: { domains: DomainInfo[] }) {
                     <Badge variant="secondary">{domainInfo.category}</Badge>
                   </TableCell>
                   <TableCell>
-                    {domainInfo.isUnsubscribed ? (
+                    {domainInfoLocal.isUnsubscribed ? (
                       <Badge className="border-green-300 bg-green-100 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
                         Unsubscribed
                       </Badge>
@@ -135,7 +165,8 @@ export default function DomainTable({ domains }: { domains: DomainInfo[] }) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      disabled={domainInfo.isUnsubscribed}
+                      onClick={() => handleUnsubscribeDomain(domainInfoLocal)}
+                      disabled={domainInfoLocal.isUnsubscribed}
                     >
                       <MailX className="mr-2 h-4 w-4" />
                       Unsubscribe

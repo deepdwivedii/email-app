@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const historyId = profile.historyId ? String(profile.historyId) : undefined;
 
     const tokenBlobEncrypted = encryptJson(tokens);
-    await upsertMailbox({
+    const saved = await upsertMailbox({
       provider: 'gmail',
       email: emailAddress,
       tokenBlobEncrypted,
@@ -36,7 +36,16 @@ export async function GET(req: NextRequest) {
       lastSyncAt: Date.now(),
     });
 
-    return NextResponse.redirect(`${origin}/connect?connected=gmail`);
+    const resp = NextResponse.redirect(`${origin}/connect?connected=gmail`);
+    const secure = origin.startsWith('https://');
+    resp.cookies.set('mb', saved.id, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure,
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+    return resp;
   } catch (e) {
     console.error(e);
     return NextResponse.redirect(`${req.nextUrl.origin}/connect?error=oauth_error`);

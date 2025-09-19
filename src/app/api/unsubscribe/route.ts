@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { updateInventoryStatus } from '@/lib/server/db';
 
 function parseListUnsubscribe(value: string | undefined) {
   if (!value) return { urls: [], mailtos: [] as string[] };
@@ -13,6 +14,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const listUnsubscribe: string | undefined = body.listUnsubscribe;
     const listUnsubscribePost: string | undefined = body.listUnsubscribePost;
+    const inventoryId: string | undefined = body.inventoryId;
 
     const { urls, mailtos } = parseListUnsubscribe(listUnsubscribe);
 
@@ -26,12 +28,16 @@ export async function POST(req: NextRequest) {
           ? { 'List-Unsubscribe': 'One-Click' }
           : undefined,
       });
-      if (res.ok) return NextResponse.json({ status: 'ok', method: 'http', url });
+      if (res.ok) {
+        if (inventoryId) await updateInventoryStatus(inventoryId, 'ignored');
+        return NextResponse.json({ status: 'ok', method: 'http', url });
+      }
     }
 
     if (!attempted && mailtos.length) {
       // In a real deployment, you would send an email with subject "unsubscribe"
       // For safety in demo, just acknowledge
+      if (inventoryId) await updateInventoryStatus(inventoryId, 'ignored');
       return NextResponse.json({ status: 'ack', method: 'mailto', to: mailtos[0] });
     }
 
