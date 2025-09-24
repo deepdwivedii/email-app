@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       expiresOn: tokenResponse.expiresOn?.toISOString?.() ?? null,
     });
 
-    await upsertMailbox({
+    const saved = await upsertMailbox({
       provider: 'outlook',
       email,
       tokenBlobEncrypted,
@@ -51,7 +51,16 @@ export async function GET(req: NextRequest) {
       lastSyncAt: Date.now(),
     });
 
-    return NextResponse.redirect(`${origin}/connect?connected=outlook`);
+    const resp = NextResponse.redirect(`${origin}/connect?connected=outlook`);
+    const secure = origin.startsWith('https://');
+    resp.cookies.set('mb', saved.id, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure,
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+    return resp;
   } catch (e) {
     console.error(e);
     return NextResponse.redirect(`${req.nextUrl.origin}/connect?error=oauth_error`);

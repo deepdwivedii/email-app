@@ -30,13 +30,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // START: ADDED TO FIX 404 ERRORS IN THE DEV ENVIRONMENT
-  experimental: {
-    // This is required to allow the Next.js dev server to accept requests from the
-    // Firebase Studio environment.
-    allowedDevOrigins: ["*.cloudworkstations.dev"],
-  },
-  // END: ADDED TO FIX 404 ERRORS IN THE DEV ENVIRONMENT
 };
 
 export default nextConfig;

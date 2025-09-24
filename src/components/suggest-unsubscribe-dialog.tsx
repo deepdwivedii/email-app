@@ -68,6 +68,31 @@ export default function SuggestUnsubscribeDialog({
     }, 300);
   };
 
+  const handleUnsubscribe = async () => {
+    if (!email) return;
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/unsubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listUnsubscribe: email.listUnsubscribe,
+          listUnsubscribePost: email.listUnsubscribePost,
+        }),
+      });
+      if (res.ok) {
+        toast({ title: 'Unsubscribe sent', description: 'We sent an unsubscribe request for you.' });
+        handleClose();
+      } else {
+        toast({ variant: 'destructive', title: 'Unsubscribe failed', description: 'The sender did not accept the request.' });
+      }
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Network error', description: 'Please try again later.' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-[425px]" onEscapeKeyDown={handleClose} onPointerDownOutside={handleClose}>
@@ -123,7 +148,7 @@ export default function SuggestUnsubscribeDialog({
             Cancel
           </Button>
           {result && (
-            <Button>
+            <Button onClick={handleUnsubscribe} disabled={isLoading}>
               <MailX className="mr-2 h-4 w-4" />
               Unsubscribe from {result.suggestedDomain}
             </Button>
