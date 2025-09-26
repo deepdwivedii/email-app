@@ -9,9 +9,11 @@ import SuggestUnsubscribeDialog from "./suggest-unsubscribe-dialog";
 export default function EmailDetailRow({
   email,
   subscriptions,
+  inventoryId,
 }: {
   email: Email;
   subscriptions: string[];
+  inventoryId?: string;
 }) {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
 
@@ -32,6 +34,7 @@ export default function EmailDetailRow({
         setIsOpen={setIsDialogOpen}
         email={email}
         subscriptions={subscriptions}
+        inventoryId={inventoryId}
       />
     </>
   );

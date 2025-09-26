@@ -203,6 +203,7 @@ export default function DomainTable({ domains }: { domains: DomainInfo[] }) {
                               key={email.id}
                               email={email}
                               subscriptions={domains.map((d) => d.domain)}
+                              inventoryId={domainInfo.inventoryId}
                             />
                           ))}
                         </div>
