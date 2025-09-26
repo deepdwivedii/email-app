@@ -11,10 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "./ui/button";
 import type { Email } from "@/types";
-import {
-  suggestUnsubscribeDomain,
-  type SuggestUnsubscribeDomainOutput,
-} from "@/ai/flows/suggest-unsubscribe-domain";
+import type { SuggestUnsubscribeDomainOutput } from "@/ai/flows/suggest-unsubscribe-domain";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, MailX } from "lucide-react";
 
@@ -23,11 +20,13 @@ export default function SuggestUnsubscribeDialog({
   setIsOpen,
   email,
   subscriptions,
+  inventoryId,
 }: {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   email: Email;
   subscriptions: string[];
+  inventoryId?: string;
 }) {
   const [isLoading, setIsLoading] = React.useState(false);
   const [result, setResult] =
@@ -38,13 +37,19 @@ export default function SuggestUnsubscribeDialog({
     setIsLoading(true);
     setResult(null);
     try {
-      const suggestion = await suggestUnsubscribeDomain({
-        from: email.from,
-        to: email.to,
-        subject: email.subject,
-        listUnsubscribe: email.listUnsubscribe || "",
-        existingSubscriptions: subscriptions,
+      const res = await fetch("/api/ai/suggest-domain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: email.from,
+          to: email.to,
+          subject: email.subject,
+          listUnsubscribe: email.listUnsubscribe || "",
+          existingSubscriptions: subscriptions,
+        }),
       });
+      if (!res.ok) throw new Error("Suggestion API failed");
+      const suggestion = (await res.json()) as SuggestUnsubscribeDomainOutput;
       setResult(suggestion);
     } catch (error) {
       console.error("AI suggestion failed:", error);
@@ -78,6 +83,7 @@ export default function SuggestUnsubscribeDialog({
         body: JSON.stringify({
           listUnsubscribe: email.listUnsubscribe,
           listUnsubscribePost: email.listUnsubscribePost,
+          inventoryId,
         }),
       });
       if (res.ok) {

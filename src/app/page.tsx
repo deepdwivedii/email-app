@@ -1,25 +1,11 @@
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { AppLogo, GmailIcon, OutlookIcon } from '@/components/icons';
+import { GmailIcon, OutlookIcon } from '@/components/icons';
 import Link from 'next/link';
 
 export default function Page() {
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex h-16 items-center justify-between border-b bg-background/80 px-4 md:px-6 backdrop-blur-sm">
-        <Link href="/" className="flex items-center gap-2">
-          <AppLogo className="h-8 w-8 text-primary" />
-          <span className="font-headline text-lg font-bold">Header Harbor</span>
-        </Link>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/dashboard">Dashboard</Link>
-          </Button>
-          <Button asChild>
-            <Link href="/connect">Connect</Link>
-          </Button>
-        </div>
-      </header>
       <main className="flex-1">
         <section className="relative h-[60vh] w-full">
           <Image

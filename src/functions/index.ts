@@ -85,31 +85,86 @@ export const syncGmailRecent = onSchedule({ schedule: 'every 10 minutes', timeou
       });
       const fresh = await oauth.getAccessToken();
       const accessToken = fresh?.token || tokens.access_token;
-      const listUrl = 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=25&q=newer_than:7d';
-      const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
-      if (listRes.ok) {
-        const listJson: any = await listRes.json();
-        const ids: string[] = (listJson.messages || []).map((m: any) => m.id);
-        for (const id of ids) {
-          const getUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Unsubscribe-Post`;
-          const getRes = await fetch(getUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
-          if (!getRes.ok) continue;
-          const msg = await getRes.json();
-          const headers: Record<string, string> = {};
-          for (const h of msg.payload?.headers || []) headers[h.name] = h.value;
-          const dateVal = Date.parse(headers['Date']);
-          await upsertMessageAndInventory(mb, {
-            providerMsgId: msg.id,
-            from: headers['From'],
-            to: headers['To'],
-            subject: headers['Subject'],
-            receivedAt: isNaN(dateVal) ? Date.now() : dateVal,
-            listUnsubscribe: headers['List-Unsubscribe'],
-            listUnsubscribePost: headers['List-Unsubscribe-Post'],
-          });
+
+      let maxHistoryId = Number(mb.cursor || 0);
+
+      if (mb.cursor) {
+        // Incremental using Gmail History API
+        let pageToken: string | undefined;
+        let nextPageUrl = `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${encodeURIComponent(mb.cursor)}&historyTypes=messageAdded&maxResults=500`;
+        while (nextPageUrl) {
+          const hRes = await fetch(nextPageUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+          if (!hRes.ok) {
+            // If startHistoryId invalid (404), fall back to wide window search
+            break;
+          }
+          const hJson: any = await hRes.json();
+          for (const h of (hJson.history || [])) {
+            if (h.historyId) {
+              const hid = Number(h.historyId);
+              if (!isNaN(hid)) maxHistoryId = Math.max(maxHistoryId, hid);
+            }
+            for (const m of (h.messages || [])) {
+              const id = m.id;
+              const getUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Unsubscribe-Post`;
+              const getRes = await fetch(getUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+              if (!getRes.ok) continue;
+              const msg = await getRes.json();
+              const headers: Record<string, string> = {};
+              for (const h of msg.payload?.headers || []) headers[h.name] = h.value;
+              const dateVal = Date.parse(headers['Date']);
+              await upsertMessageAndInventory(mb, {
+                providerMsgId: msg.id,
+                from: headers['From'],
+                to: headers['To'],
+                subject: headers['Subject'],
+                receivedAt: isNaN(dateVal) ? Date.now() : dateVal,
+                listUnsubscribe: headers['List-Unsubscribe'],
+                listUnsubscribePost: headers['List-Unsubscribe-Post'],
+              });
+              const msgHid = Number(msg.historyId);
+              if (!isNaN(msgHid)) maxHistoryId = Math.max(maxHistoryId, msgHid);
+            }
+          }
+          pageToken = hJson.nextPageToken;
+          nextPageUrl = pageToken ? `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${encodeURIComponent(mb.cursor)}&historyTypes=messageAdded&maxResults=500&pageToken=${encodeURIComponent(pageToken)}` : undefined;
         }
       }
-      await mailboxesCol().doc(mb.id).set({ lastSyncAt: Date.now() }, { merge: true });
+
+      if (!maxHistoryId) {
+        // Initial backfill: fetch metadata for last 24 months
+        const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=newer_than:720d`;
+        const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+        if (listRes.ok) {
+          const listJson: any = await listRes.json();
+          const ids: string[] = (listJson.messages || []).map((m: any) => m.id);
+          for (const id of ids) {
+            const getUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Unsubscribe-Post`;
+            const getRes = await fetch(getUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+            if (!getRes.ok) continue;
+            const msg = await getRes.json();
+            const headers: Record<string, string> = {};
+            for (const h of msg.payload?.headers || []) headers[h.name] = h.value;
+            const dateVal = Date.parse(headers['Date']);
+            await upsertMessageAndInventory(mb, {
+              providerMsgId: msg.id,
+              from: headers['From'],
+              to: headers['To'],
+              subject: headers['Subject'],
+              receivedAt: isNaN(dateVal) ? Date.now() : dateVal,
+              listUnsubscribe: headers['List-Unsubscribe'],
+              listUnsubscribePost: headers['List-Unsubscribe-Post'],
+            });
+            const msgHid = Number(msg.historyId);
+            if (!isNaN(msgHid)) maxHistoryId = Math.max(maxHistoryId, msgHid);
+          }
+        }
+      }
+
+      // Persist lastSyncAt and Gmail history cursor if we observed any
+      const update: any = { lastSyncAt: Date.now() };
+      if (maxHistoryId && maxHistoryId > 0) update.cursor = String(maxHistoryId);
+      await mailboxesCol().doc(mb.id).set(update, { merge: true });
     } catch (e: any) {
       logger.error(`Gmail sync failed for ${mb.email}: ${e?.message || e}`);
     }
@@ -131,14 +186,12 @@ export const syncOutlookDelta = onSchedule({ schedule: 'every 10 minutes', timeo
     try {
       const tokenBlob = decryptJson<any>(mb.tokenBlobEncrypted);
       let accessToken: string | null = tokenBlob.accessToken || null;
-      // try using access token; if unauthorized, refresh using refresh_token grant
-      const fetchMessages = async (token: string) => {
-        const url = `https://graph.microsoft.com/v1.0/me/messages?$select=id,subject,receivedDateTime,from,toRecipients,hasAttachments&$top=25`;
-        return fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      };
-      let res = await fetchMessages(accessToken!);
+      // Helper to perform authenticated fetch
+      const authedFetch = async (url: string) => fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+
+      // Ensure access token is valid; refresh if needed
+      let res = await authedFetch('https://graph.microsoft.com/v1.0/me');
       if (res.status === 401 || res.status === 403) {
-        // refresh via token endpoint
         const form = new URLSearchParams({
           client_id: clientId!,
           client_secret: clientSecret!,
@@ -154,7 +207,6 @@ export const syncOutlookDelta = onSchedule({ schedule: 'every 10 minutes', timeo
         if (tr.ok) {
           const tj = await tr.json();
           accessToken = tj.access_token;
-          // Persist refreshed token blob
           await mailboxesCol().doc(mb.id).set({
             tokenBlobEncrypted: encryptJson({
               ...tokenBlob,
@@ -162,34 +214,44 @@ export const syncOutlookDelta = onSchedule({ schedule: 'every 10 minutes', timeo
               refreshToken: tj.refresh_token ?? tokenBlob.refreshToken,
             }),
           }, { merge: true }).catch(() => {});
-          res = await fetchMessages(accessToken!);
+        } else {
+          throw new Error(`Token refresh failed ${tr.status}`);
         }
       }
-      if (!res.ok) throw new Error(`Graph list failed ${res.status}`);
-      const data: any = await res.json();
-      for (const item of data.value || []) {
-        // Need internetMessageHeaders; fetch full message headers for each id
-        const mRes = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${item.id}?$select=subject,receivedDateTime,from,toRecipients,internetMessageHeaders`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!mRes.ok) continue;
-        const m = await mRes.json();
-        const headersArr: Array<{ name: string; value: string }> = m.internetMessageHeaders || [];
-        const headers: Record<string, string> = {};
-        for (const h of headersArr) headers[h.name] = h.value;
-        const listUnsub = headers['List-Unsubscribe'];
-        const listUnsubPost = headers['List-Unsubscribe-Post'];
-        const fromStr = headers['From'] || (m.from?.emailAddress?.name && m.from?.emailAddress?.address ? `${m.from.emailAddress.name} <${m.from.emailAddress.address}>` : m.from?.emailAddress?.address);
-        const toStr = headers['To'] || (Array.isArray(m.toRecipients) && m.toRecipients.length ? m.toRecipients.map((r: any) => r.emailAddress?.address).join(', ') : undefined);
-        await upsertMessageAndInventory(mb, {
-          providerMsgId: m.id,
-          from: fromStr || undefined,
-          to: toStr || undefined,
-          subject: m.subject,
-          receivedAt: Date.parse(m.receivedDateTime) || Date.now(),
-          listUnsubscribe: listUnsub,
-          listUnsubscribePost: listUnsubPost,
-        });
+
+      // Use delta token if we have one; otherwise start a new delta query
+      let url = mb.cursor || `https://graph.microsoft.com/v1.0/me/messages/delta?$select=id,subject,receivedDateTime,from,toRecipients,internetMessageHeaders&$top=50`;
+      let nextLink: string | undefined = url;
+      let deltaLink: string | undefined;
+      while (nextLink) {
+        const pageRes = await authedFetch(nextLink);
+        if (!pageRes.ok) throw new Error(`Graph delta failed ${pageRes.status}`);
+        const data: any = await pageRes.json();
+        for (const m of (data.value || [])) {
+          const headersArr: Array<{ name: string; value: string }> = m.internetMessageHeaders || [];
+          const headers: Record<string, string> = {};
+          for (const h of headersArr) headers[h.name] = h.value;
+          const listUnsub = headers['List-Unsubscribe'];
+          const listUnsubPost = headers['List-Unsubscribe-Post'];
+          const fromStr = headers['From'] || (m.from?.emailAddress?.name && m.from?.emailAddress?.address ? `${m.from.emailAddress.name} <${m.from.emailAddress.address}>` : m.from?.emailAddress?.address);
+          const toStr = headers['To'] || (Array.isArray(m.toRecipients) && m.toRecipients.length ? m.toRecipients.map((r: any) => r.emailAddress?.address).join(', ') : undefined);
+          await upsertMessageAndInventory(mb, {
+            providerMsgId: m.id,
+            from: fromStr || undefined,
+            to: toStr || undefined,
+            subject: m.subject,
+            receivedAt: Date.parse(m.receivedDateTime) || Date.now(),
+            listUnsubscribe: listUnsub,
+            listUnsubscribePost: listUnsubPost,
+          });
+        }
+        nextLink = data['@odata.nextLink'];
+        deltaLink = data['@odata.deltaLink'] || deltaLink;
+      }
+
+      // Persist deltaLink cursor and lastSyncAt
+      if (deltaLink) {
+        await mailboxesCol().doc(mb.id).set({ cursor: deltaLink }, { merge: true });
       }
       await mailboxesCol().doc(mb.id).set({ lastSyncAt: Date.now() }, { merge: true });
     } catch (e: any) {
