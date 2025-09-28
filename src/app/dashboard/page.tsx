@@ -93,7 +93,7 @@ export default function DashboardPage() {
     return null; // Redirecting
   }
 
-  const hasConnectedMailbox = domains.some((d: any) => d.inventoryId);
+  const hasConnectedMailbox = domains.length > 0;
   
   return (
     <div className="container mx-auto max-w-5xl px-4 py-8">
@@ -114,8 +114,8 @@ export default function DashboardPage() {
       {isLoading ? (
         <div className="text-sm text-muted-foreground">Loading…</div>
       ) : error ? (
-        <div className="text-sm text-destructive">Failed to load inventory. Try connecting a mailbox.</div>
-      ) : domains && domains.length > 0 ? (
+        <div className="text-sm text-destructive">Failed to load inventory. Please try again.</div>
+      ) : hasConnectedMailbox ? (
         <DomainTable domains={domains} />
       ) : (
         <ConnectMailbox />

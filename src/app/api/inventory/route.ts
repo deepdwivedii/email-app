@@ -18,17 +18,9 @@ async function getUserIdFromSessionCookie(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const userId = await getUserIdFromSessionCookie(req);
   if (!userId) {
-    // Return empty inventory if not logged in, or fallback to mock data
-    const domains = aggregateEmailsByDomain(mockEmails).map((d) => ({
-      domain: d.domain,
-      count: d.count,
-      lastSeen: d.lastSeen,
-      category: d.category,
-      isUnsubscribed: d.isUnsubscribed,
-      emails: d.emails,
-      inventoryId: undefined,
-    }));
-    return NextResponse.json({ domains });
+    // Return empty inventory if not logged in.
+    // The UI will guide them to login/signup.
+    return NextResponse.json({ domains: [] });
   }
 
   const { searchParams } = new URL(req.url);
@@ -48,6 +40,7 @@ export async function GET(req: NextRequest) {
 
   if (!items.length) {
     // Return empty if no inventory found for the user.
+    // This prompts the dashboard to show the "Connect Mailbox" card.
     return NextResponse.json({ domains: [] });
   }
 
