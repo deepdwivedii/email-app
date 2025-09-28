@@ -6,4 +6,5 @@ import { getFirestore } from 'firebase-admin/firestore';
 const app = getApps().length ? getApp() : initializeApp({ credential: applicationDefault() });
 
 export const firestore = getFirestore(app);
+export const firebaseAdminApp = app;
 export default app;

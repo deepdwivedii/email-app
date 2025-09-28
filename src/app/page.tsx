@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { GmailIcon, OutlookIcon } from '@/components/icons';
 import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
 
 export default function Page() {
   return (
@@ -27,13 +27,8 @@ export default function Page() {
             </p>
             <div className="flex flex-col justify-center gap-4 sm:flex-row">
               <Button size="lg" asChild className="w-full sm:w-auto">
-                <Link href="/connect">
-                  <GmailIcon className="mr-2 h-5 w-5" /> Connect with Gmail
-                </Link>
-              </Button>
-              <Button size="lg" variant="secondary" asChild className="w-full sm:w-auto">
-                <Link href="/connect">
-                  <OutlookIcon className="mr-2 h-5 w-5" /> Connect with Outlook
+                <Link href="/signup">
+                  Get Started for Free <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>
             </div>

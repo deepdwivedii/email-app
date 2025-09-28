@@ -2,21 +2,38 @@ import { NextRequest, NextResponse } from 'next/server';
 import { OAuth2Client } from 'google-auth-library';
 import { encryptJson } from '@/lib/server/crypto';
 import { upsertMailbox } from '@/lib/server/db';
+import { getAuth } from 'firebase-admin/auth';
+import { firebaseAdminApp } from '@/lib/server/firebase-admin';
+
+async function getUserIdFromSessionCookie(req: NextRequest) {
+  const sessionCookie = req.cookies.get('__session')?.value;
+  if (!sessionCookie) return null;
+  try {
+    const decodedToken = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true);
+    return decodedToken.uid;
+  } catch (error) {
+    return null;
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
     const origin = req.nextUrl.origin;
+    const userId = await getUserIdFromSessionCookie(req);
+    if (!userId) {
+      return NextResponse.redirect(`${origin}/login?error=unauthorized`);
+    }
+
     const redirectUri = `${origin}/api/oauth/google/callback`;
     const clientId = process.env.GMAIL_OAUTH_CLIENT_ID as string;
     const clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET as string;
     const code = req.nextUrl.searchParams.get('code');
     if (!clientId || !clientSecret || !code) {
-      return NextResponse.redirect(`${origin}/connect?error=oauth_missing_params`);
+      return NextResponse.redirect(`${origin}/dashboard?error=oauth_missing_params`);
     }
     const client = new OAuth2Client({ clientId, clientSecret, redirectUri });
     const { tokens } = await client.getToken(code);
 
-    // Fetch Gmail profile to get email and historyId (cursor)
     const accessToken = tokens.access_token as string;
     const profileRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -28,6 +45,7 @@ export async function GET(req: NextRequest) {
 
     const tokenBlobEncrypted = encryptJson(tokens);
     const saved = await upsertMailbox({
+      userId,
       provider: 'gmail',
       email: emailAddress,
       tokenBlobEncrypted,
@@ -36,8 +54,9 @@ export async function GET(req: NextRequest) {
       lastSyncAt: Date.now(),
     });
 
-    const resp = NextResponse.redirect(`${origin}/connect?connected=gmail`);
+    const resp = NextResponse.redirect(`${origin}/dashboard?connected=gmail`);
     const secure = origin.startsWith('https://');
+    // Set mailbox ID cookie to scope sync operations
     resp.cookies.set('mb', saved.id, {
       path: '/',
       httpOnly: true,
@@ -48,6 +67,6 @@ export async function GET(req: NextRequest) {
     return resp;
   } catch (e) {
     console.error(e);
-    return NextResponse.redirect(`${req.nextUrl.origin}/connect?error=oauth_error`);
+    return NextResponse.redirect(`${req.nextUrl.origin}/dashboard?error=oauth_error`);
   }
 }
