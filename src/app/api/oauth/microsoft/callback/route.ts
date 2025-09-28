@@ -2,16 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { encryptJson } from '@/lib/server/crypto';
 import { upsertMailbox } from '@/lib/server/db';
+import { getAuth } from 'firebase-admin/auth';
+import { firebaseAdminApp } from '@/lib/server/firebase-admin';
+
+async function getUserIdFromSessionCookie(req: NextRequest) {
+  const sessionCookie = req.cookies.get('__session')?.value;
+  if (!sessionCookie) return null;
+  try {
+    const decodedToken = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true);
+    return decodedToken.uid;
+  } catch (error) {
+    return null;
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
     const origin = req.nextUrl.origin;
+     const userId = await getUserIdFromSessionCookie(req);
+    if (!userId) {
+      return NextResponse.redirect(`${origin}/login?error=unauthorized`);
+    }
+
     const redirectUri = `${origin}/api/oauth/microsoft/callback`;
     const clientId = process.env.MS_OAUTH_CLIENT_ID as string;
     const clientSecret = process.env.MS_OAUTH_CLIENT_SECRET as string;
     const code = req.nextUrl.searchParams.get('code') as string;
     if (!clientId || !clientSecret || !code) {
-      return NextResponse.redirect(`${origin}/connect?error=oauth_missing_params`);
+      return NextResponse.redirect(`${origin}/dashboard?error=oauth_missing_params`);
     }
 
     const pca = new ConfidentialClientApplication({
@@ -44,6 +62,7 @@ export async function GET(req: NextRequest) {
     });
 
     const saved = await upsertMailbox({
+      userId,
       provider: 'outlook',
       email,
       tokenBlobEncrypted,
@@ -63,6 +82,6 @@ export async function GET(req: NextRequest) {
     return resp;
   } catch (e) {
     console.error(e);
-    return NextResponse.redirect(`${req.nextUrl.origin}/connect?error=oauth_error`);
+    return NextResponse.redirect(`${req.nextUrl.origin}/dashboard?error=oauth_error`);
   }
 }

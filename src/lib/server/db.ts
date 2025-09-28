@@ -4,6 +4,7 @@ export type Provider = 'gmail' | 'outlook';
 
 export type Mailbox = {
   id: string; // doc id
+  userId: string; // Firebase Auth UID
   provider: Provider;
   email: string;
   tokenBlobEncrypted: string; // encrypted tokens
@@ -56,12 +57,22 @@ export async function updateInventoryStatus(id: string, status: Inventory['statu
 }
 
 export async function listInventory(filters?: {
+  userId?: string;
   provider?: Provider;
   category?: Inventory['status']; // not ideal; category would be in message aggregation
   hasUnsub?: boolean;
   lastSeenAfter?: number;
 }) {
   let q: FirebaseFirestore.Query = inventoryCol();
+  if (filters?.userId) {
+    const userMailboxes = await mailboxesCol().where('userId', '==', filters.userId).get();
+    const mailboxIds = userMailboxes.docs.map(doc => doc.id);
+    if (mailboxIds.length > 0) {
+      q = q.where('mailboxId', 'in', mailboxIds);
+    } else {
+      return []; // User has no mailboxes, so no inventory
+    }
+  }
   if (filters?.hasUnsub !== undefined) q = q.where('hasUnsub', '==', filters.hasUnsub);
   if (filters?.lastSeenAfter) q = q.where('lastSeen', '>=', filters.lastSeenAfter);
   // provider/category filters would require joins; skip for now or denormalize later
