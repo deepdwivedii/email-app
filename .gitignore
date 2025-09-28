@@ -38,8 +38,20 @@ yarn-error.log*
 next-env.d.ts
 
 .genkit/*
+
+# Environment variables (NEVER commit these!)
 .env*
+.env
+.env.local
+.env.development
+.env.production
 
 # firebase
 firebase-debug.log
 firestore-debug.log
+
+# Firebase service account credentials (NEVER commit these!)
+credentials/
+**/credentials/
+firebase-service-account-key.json
+*-service-account-key.json

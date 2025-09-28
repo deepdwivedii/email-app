@@ -9,12 +9,13 @@ export async function POST(req: NextRequest) {
     const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 days
     try {
       const sessionCookie = await getAuth(firebaseAdminApp).createSessionCookie(idToken, { expiresIn });
+      const isProduction = req.nextUrl.origin.startsWith('https://');
       const options = {
         name: '__session',
         value: sessionCookie,
         maxAge: expiresIn,
         httpOnly: true,
-        secure: true,
+        secure: isProduction, // Only secure in production (HTTPS)
         path: '/',
         sameSite: 'lax' as const
       };
