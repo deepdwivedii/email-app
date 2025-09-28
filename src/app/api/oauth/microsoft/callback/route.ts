@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       lastSyncAt: Date.now(),
     });
 
-    const resp = NextResponse.redirect(`${origin}/connect?connected=outlook`);
+    const resp = NextResponse.redirect(`${origin}/dashboard?connected=outlook`);
     const secure = origin.startsWith('https://');
     resp.cookies.set('mb', saved.id, {
       path: '/',

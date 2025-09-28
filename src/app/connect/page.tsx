@@ -26,9 +26,9 @@ export default function ConnectPage() {
           <p className="text-xs text-muted-foreground">
             Make sure to add the following redirect URIs in your OAuth apps:
             <br />
-            Google: https://&lt;your-domain&gt;/api/oauth/google/callback
+            Google: http://localhost:9002/api/oauth/google/callback
             <br />
-            Microsoft: https://&lt;your-domain&gt;/api/oauth/microsoft/callback
+            Microsoft: http://localhost:9002/api/oauth/microsoft/callback
           </p>
         </div>
       </main>

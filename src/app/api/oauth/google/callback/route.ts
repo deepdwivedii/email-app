@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       lastSyncAt: Date.now(),
     });
 
-    const resp = NextResponse.redirect(`${origin}/connect?connected=gmail`);
+    const resp = NextResponse.redirect(`${origin}/dashboard?connected=gmail`);
     const secure = origin.startsWith('https://');
     resp.cookies.set('mb', saved.id, {
       path: '/',
