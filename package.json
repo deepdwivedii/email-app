@@ -9,7 +9,8 @@
     "build": "next build",
     "start": "next start -p 9002",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@azure/msal-node": "^2.6.6",
@@ -57,6 +58,7 @@
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^3.24.2",
+    "firebase-functions": "^4.9.0",
     "swr": "^2.2.5"
   },
   "devDependencies": {
