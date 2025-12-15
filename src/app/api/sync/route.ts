@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mailboxesCol, messagesCol, inventoryCol, type Mailbox } from '@/lib/server/db';
+import { mailboxesCol, messagesCol, inventoryCol, emailIdentitiesCol, type Mailbox } from '@/lib/server/db';
+import { classifyMessage } from '@/lib/server/classify';
+import { recordEvidenceAndInfer } from '@/lib/server/infer';
 import { decryptJson, encryptJson } from '@/lib/server/crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { FieldValue } from 'firebase-admin/firestore';
+import { extractRegistrableDomain } from '@/lib/server/domain';
+import { fetchWithRetry } from '@/lib/server/fetch';
+import { getAuth } from 'firebase-admin/auth';
+import { firebaseAdminApp } from '@/lib/server/firebase-admin';
 
-function getRootDomainFromFromHeader(from?: string): string | undefined {
-  if (!from) return undefined;
-  const match = from.match(/<([^>]+)>/);
-  const email = (match ? match[1] : from).match(/[\w.+-]+@([\w.-]+)/);
-  const domain = email?.[1]?.toLowerCase();
-  if (!domain) return undefined;
-  const parts = domain.split('.');
-  if (parts.length >= 3) {
-    const tld2 = ['co', 'com', 'org', 'net', 'gov', 'edu'];
-    if (tld2.includes(parts[parts.length - 2])) {
-      return parts.slice(-3).join('.');
-    }
-    return parts.slice(-2).join('.');
-  }
-  return domain;
-}
+// domain extraction moved to src/lib/server/domain.ts
 
 async function upsertMessageAndInventory(mb: Mailbox, msg: {
   providerMsgId: string;
@@ -43,12 +34,12 @@ async function upsertMessageAndInventory(mb: Mailbox, msg: {
       receivedAt: msg.receivedAt,
       listUnsubscribe: msg.listUnsubscribe,
       listUnsubscribePost: msg.listUnsubscribePost,
-      rootDomain: getRootDomainFromFromHeader(msg.from),
+      rootDomain: extractRegistrableDomain(msg.from),
     },
     { merge: true }
   );
 
-  const rootDomain = getRootDomainFromFromHeader(msg.from);
+  const rootDomain = extractRegistrableDomain(msg.from);
   if (!rootDomain) return;
   const invId = `${mb.id}:${rootDomain}`;
   const invRef = inventoryCol().doc(invId);
@@ -65,14 +56,54 @@ async function upsertMessageAndInventory(mb: Mailbox, msg: {
     },
     { merge: true }
   );
+  try {
+    const idSnap = await emailIdentitiesCol().where('mailboxId', '==', mb.id).limit(1).get();
+    const emailIdentityId = idSnap.docs[0]?.id;
+    if (emailIdentityId) {
+      const classification = classifyMessage({
+        from: msg.from,
+        subject: msg.subject,
+        listUnsubscribe: msg.listUnsubscribe,
+        listUnsubscribePost: msg.listUnsubscribePost,
+      });
+      await recordEvidenceAndInfer({
+        userId: mb.userId,
+        mailboxId: mb.id,
+        emailIdentityId,
+        rootDomain,
+        intent: classification.intent,
+        weight: classification.weight,
+        messageId: msgId,
+        subject: msg.subject,
+        from: msg.from,
+        receivedAt: msg.receivedAt,
+        signals: classification.signals,
+      });
+    }
+  } catch {}
 }
 
 export async function POST(req: NextRequest) {
-  const results: any = { gmail: 0, outlook: 0, errors: [] as string[], lastSynced: Date.now() };
+  type SyncResults = { gmail: number; outlook: number; errors: string[]; lastSynced: number };
+  const results: SyncResults = { gmail: 0, outlook: 0, errors: [], lastSynced: Date.now() };
   const currentMailboxId = req.cookies.get('mb')?.value;
 
   if (!currentMailboxId) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const sessionCookie = req.cookies.get('__session')?.value;
+  if (!sessionCookie) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const decoded = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true).catch(() => null);
+  const sessionUserId = decoded?.uid;
+  if (!sessionUserId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const mbDoc = await mailboxesCol().doc(currentMailboxId).get();
+  if (!mbDoc.exists || (mbDoc.data() as Mailbox).userId !== sessionUserId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   try {
@@ -85,7 +116,8 @@ export async function POST(req: NextRequest) {
       for (const doc of docs) {
         const mb = doc.data() as Mailbox;
         try {
-          const tokens = decryptJson<any>(mb.tokenBlobEncrypted);
+          type GmailTokenBlob = { access_token: string; refresh_token: string };
+          const tokens = decryptJson<GmailTokenBlob>(mb.tokenBlobEncrypted);
           const oauth = new OAuth2Client({ clientId, clientSecret });
           oauth.setCredentials({
             access_token: tokens.access_token,
@@ -95,15 +127,15 @@ export async function POST(req: NextRequest) {
           const accessToken = fresh?.token || tokens.access_token;
           const listUrl =
             'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&q=newer_than:7d';
-          const listRes = await fetch(listUrl, {
+          const listRes = await fetchWithRetry(listUrl, {
             headers: { Authorization: `Bearer ${accessToken}` },
           });
           if (listRes.ok) {
-            const listJson: any = await listRes.json();
-            const ids: string[] = (listJson.messages || []).map((m: any) => m.id);
+            const listJson: { messages?: Array<{ id: string }> } = await listRes.json();
+            const ids: string[] = (listJson.messages || []).map((m) => m.id);
             for (const id of ids) {
               const getUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Unsubscribe-Post`;
-              const getRes = await fetch(getUrl, {
+              const getRes = await fetchWithRetry(getUrl, {
                 headers: { Authorization: `Bearer ${accessToken}` },
               });
               if (!getRes.ok) continue;
@@ -124,13 +156,13 @@ export async function POST(req: NextRequest) {
             }
             await mailboxesCol().doc(mb.id).set({ lastSyncAt: Date.now() }, { merge: true });
           }
-        } catch (e: any) {
-          results.errors.push(`gmail:${mb.email}:${e?.message || e}`);
+        } catch (e) {
+          results.errors.push(`gmail:${mb.email}:${(e as Error)?.message || String(e)}`);
         }
       }
     }
-  } catch (e: any) {
-    results.errors.push(`gmail_global:${e?.message || e}`);
+  } catch (e) {
+    results.errors.push(`gmail_global:${(e as Error)?.message || String(e)}`);
   }
 
   try {
@@ -143,11 +175,12 @@ export async function POST(req: NextRequest) {
       for (const doc of docs) {
         const mb = doc.data() as Mailbox;
         try {
-          const tokenBlob = decryptJson<any>(mb.tokenBlobEncrypted);
+          type OutlookTokenBlob = { accessToken: string | null; refreshToken: string; expiresOn: string | null };
+          const tokenBlob = decryptJson<OutlookTokenBlob>(mb.tokenBlobEncrypted);
           let accessToken: string | null = tokenBlob.accessToken || null;
           const fetchMessages = async (token: string) => {
             const url = `https://graph.microsoft.com/v1.0/me/messages?$select=id,subject,receivedDateTime,from,toRecipients&$top=20`;
-            return fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            return fetchWithRetry(url, { headers: { Authorization: `Bearer ${token}` } });
           };
           let res = await fetchMessages(accessToken!);
           if (res.status === 401 || res.status === 403) {
@@ -159,7 +192,7 @@ export async function POST(req: NextRequest) {
               scope:
                 'https://graph.microsoft.com/Mail.Read offline_access openid email profile',
             });
-            const tr = await fetch(
+            const tr = await fetchWithRetry(
               'https://login.microsoftonline.com/common/oauth2/v2.0/token',
               {
                 method: 'POST',
@@ -184,9 +217,9 @@ export async function POST(req: NextRequest) {
             }
           }
           if (!res.ok) throw new Error(`Graph list failed ${res.status}`);
-          const data: any = await res.json();
+          const data: { value?: Array<{ id: string }> } = await res.json();
           for (const item of (data.value || [])) {
-            const mRes = await fetch(
+            const mRes = await fetchWithRetry(
               `https://graph.microsoft.com/v1.0/me/messages/${item.id}?$select=subject,receivedDateTime,from,toRecipients,internetMessageHeaders`,
               {
                 headers: { Authorization: `Bearer ${accessToken}` },
@@ -210,13 +243,13 @@ export async function POST(req: NextRequest) {
             results.outlook++;
           }
           await mailboxesCol().doc(mb.id).set({ lastSyncAt: Date.now() }, { merge: true });
-        } catch (e: any) {
-          results.errors.push(`outlook:${mb.email}:${e?.message || e}`);
+        } catch (e) {
+          results.errors.push(`outlook:${mb.email}:${(e as Error)?.message || String(e)}`);
         }
       }
     }
-  } catch (e: any) {
-    results.errors.push(`outlook_global:${e?.message || e}`);
+  } catch (e) {
+    results.errors.push(`outlook_global:${(e as Error)?.message || String(e)}`);
   }
 
   return NextResponse.json(results);

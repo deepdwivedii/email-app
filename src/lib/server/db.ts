@@ -44,6 +44,12 @@ export type Inventory = {
 export const mailboxesCol = () => firestore.collection('mailboxes');
 export const messagesCol = () => firestore.collection('messages');
 export const inventoryCol = () => firestore.collection('inventory');
+export const emailIdentitiesCol = () => firestore.collection('emailIdentities');
+export const accountsCol = () => firestore.collection('accounts');
+export const accountEvidenceCol = () => firestore.collection('accountEvidence');
+export const tasksCol = () => firestore.collection('tasks');
+export const actionLogsCol = () => firestore.collection('actionLogs');
+export const serviceAliasesCol = () => firestore.collection('serviceAliases');
 
 export async function upsertMailbox(mb: Omit<Mailbox, 'id'> & { id?: string }): Promise<Mailbox> {
   const id = mb.id || (mb.provider + ':' + mb.email.toLowerCase());
@@ -74,8 +80,85 @@ export async function listInventory(filters?: {
     }
   }
   if (filters?.hasUnsub !== undefined) q = q.where('hasUnsub', '==', filters.hasUnsub);
-  if (filters?.lastSeenAfter) q = q.where('lastSeen', '>=', filters.lastSeenAfter);
+  if (filters?.lastSeenAfter) q = q.where('lastSeen', '>=' , filters.lastSeenAfter);
   // provider/category filters would require joins; skip for now or denormalize later
   const snap = await q.orderBy('lastSeen', 'desc').limit(500).get();
   return snap.docs.map(d => d.data() as Inventory);
+}
+
+export type EmailIdentity = {
+  id: string;
+  userId: string;
+  email: string;
+  provider: Provider;
+  mailboxId: string;
+  verifiedAt?: number;
+  createdAt: number;
+};
+
+export type Account = {
+  id: string;
+  userId: string;
+  emailIdentityId: string;
+  serviceName: string;
+  serviceDomain: string;
+  category: 'bank'|'social'|'ecommerce'|'saas'|'subscription'|'other';
+  confidenceScore: number;
+  explanation: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  status: 'active'|'dormant'|'closed'|'unknown';
+};
+
+export type AccountEvidence = {
+  id: string;
+  userId: string;
+  accountId: string;
+  mailboxId: string;
+  messageId: string;
+  evidenceType: 'welcome'|'verify'|'login'|'reset'|'billing'|'security'|'newsletter'|'other';
+  excerpt?: string;
+  signals: Record<string, unknown>;
+  weight: number;
+  createdAt: number;
+};
+
+export type Task = {
+  id: string;
+  userId: string;
+  accountId?: string;
+  title: string;
+  type: 'unsubscribe'|'close_account'|'update_email'|'enable_2fa'|'review';
+  status: 'open'|'in_progress'|'done'|'dismissed';
+  dueAt?: number;
+  createdAt: number;
+};
+
+export type ActionLog = {
+  id: string;
+  userId: string;
+  accountId?: string;
+  mailboxId?: string;
+  actionType: string;
+  executionMode: 'http'|'mailto'|'link'|'manual'|'api';
+  target?: string;
+  status: 'success'|'fail'|'noop';
+  error?: string;
+  createdAt: number;
+};
+
+export async function upsertEmailIdentity(input: Omit<EmailIdentity, 'id'|'createdAt'> & { id?: string }) {
+  const id = input.id || (`${input.provider}:${input.email.toLowerCase()}`);
+  const ref = emailIdentitiesCol().doc(id);
+  const doc = {
+    id,
+    userId: input.userId,
+    email: input.email,
+    provider: input.provider,
+    mailboxId: input.mailboxId,
+    verifiedAt: input.verifiedAt,
+    createdAt: Date.now(),
+  };
+  await ref.set(doc, { merge: true });
+  return doc as EmailIdentity;
 }

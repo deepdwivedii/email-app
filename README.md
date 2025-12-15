@@ -1,76 +1,151 @@
-# Firebase Studio (Email Subscriptions App)
+# Atlas — Your digital accounts, carried in one place.
 
-This is a Next.js app deployed with Firebase that helps you review marketing senders (by root domain), unsubscribe where possible, and manually sync recent emails from Gmail and Outlook.
+## Purpose
 
-## What’s included
+- Manage email subscriptions by indexing headers from Gmail and Outlook, aggregating senders by root domain, and enabling safe unsubscribe actions with AI assistance.
 
-- OAuth connect for Gmail and Microsoft Outlook
-- Manual sync (Dashboard → Sync Now)
-  - Scopes sync to the current mailbox via an httpOnly cookie (mb)
-  - Gmail: fetches recent metadata only (From/To/Subject/List-Unsubscribe headers)
-  - Outlook: fetches recent messages via Microsoft Graph
-  - Outlook access token auto-refresh and secure persistence
-  - Updates lastSyncAt for the mailbox and returns a summary payload
-- Inventory API returns domains with inventoryId and mailboxId
-- Unsubscribe API persists inventory status server-side when unsubscribe succeeds
-- Dashboard UI toasts summarizing sync results and a “Last synced” indicator
+## Capabilities
 
-## Quick start
+- OAuth connect for Gmail and Outlook with encrypted token storage.
+- Manual sync from the Dashboard and scheduled background sync jobs.
+- Header-only ingestion: From, To, Subject, Date, List-Unsubscribe, List-Unsubscribe-Post.
+- Domain inventory with counts, last seen, unsubscribe status, and recent emails.
+- Safe Unsubscribe: RFC 8058 one-click HTTP when available; `mailto:` acknowledged.
+- AI Suggestion: Gemini via Genkit recommends the most likely unsubscribe domain with confidence and reasoning.
 
-1) Install dependencies
-- npm install
+## Architecture
 
-2) Run the dev server (port 9002)
-- npm run dev
-- Open http://localhost:9002/
+- Next.js 15 (App Router) with React 18 and TypeScript.
+- Firebase Admin for server operations; Firestore for storage.
+- API routes under `src/app/api` for auth/session, OAuth, inventory, sync, unsubscribe, AI, accounts, tasks, action-log, mailboxes, privacy controls.
+- Scheduled Cloud Functions for periodic sync of Gmail History and Outlook Delta.
 
-## Environment variables
+### Directory Overview
 
-Set these in your environment (e.g., .env.local for Next.js and project config for Firebase):
-- GMAIL_OAUTH_CLIENT_ID
-- GMAIL_OAUTH_CLIENT_SECRET
-- MS_OAUTH_CLIENT_ID
-- MS_OAUTH_CLIENT_SECRET
-- Firebase Admin credentials (per your existing setup)
+```
+src/
+├── ai/                         # Genkit config and flows
+├── app/                        # App Router + API endpoints
+├── components/                 # UI components and dialogs
+├── functions/                  # Firebase Functions (scheduled sync)
+├── hooks/                      # Auth and utilities
+├── lib/                        # Server/client libs (crypto, db, firebase)
+└── types/                      # Shared types
+```
 
-## OAuth configuration
+### Data Model (Firestore)
 
-Add the following authorized redirect URIs to your OAuth apps:
-- Google (Gmail):
-  - http://localhost:9002/api/oauth/google/callback (local)
-  - https://<your-domain>/api/oauth/google/callback (production)
-  - Scopes requested: https://www.googleapis.com/auth/gmail.metadata, openid, email
-- Microsoft (Outlook/Graph):
-  - http://localhost:9002/api/oauth/microsoft/callback (local)
-  - https://<your-domain>/api/oauth/microsoft/callback (production)
-  - Scopes requested: https://graph.microsoft.com/Mail.Read, offline_access, openid, email, profile
+```
+mailboxes: {
+  id, userId, provider, email, tokenBlobEncrypted, cursor?, connectedAt, lastSyncAt?
+}
+messages: {
+  id, mailboxId, providerMsgId, from?, to?, subject?, receivedAt,
+  listUnsubscribe?, listUnsubscribePost?, rootDomain?
+}
+inventory: {
+  id, mailboxId, rootDomain, firstSeen, lastSeen, msgCount,
+  hasUnsub, status ('active'|'moved|'ignored'), changeEmailUrl?
+}
+emailIdentities: {
+  id, userId, email, provider, mailboxId, verifiedAt?, createdAt
+}
+accounts: {
+  id, userId, emailIdentityId, serviceName, serviceDomain,
+  category ('bank'|'social'|'ecommerce'|'saas'|'subscription'|'other'),
+  confidenceScore, explanation, firstSeenAt, lastSeenAt, status
+}
+accountEvidence: {
+  id, userId, accountId, mailboxId, messageId, evidenceType,
+  excerpt?, signals, weight, createdAt
+}
+tasks: {
+  id, userId, accountId?, title, type, status, dueAt?, createdAt
+}
+actionLogs: {
+  id, userId, accountId?, mailboxId?, actionType, executionMode, target?,
+  status, error?, createdAt
+}
+```
 
-On successful OAuth, the app sets an httpOnly cookie (mb) with the mailbox id for scoping.
+## Key Flows
 
-## API contracts (summary)
+- Login and session cookie
+  - Client signs in via Firebase Auth; server sets `__session` cookie.
+- OAuth Connect (Gmail/Outlook)
+  - Start → Consent → Callback → Token exchange → Encrypted storage → Set `mb` cookie.
+- Sync (manual and scheduled)
+  - Gmail: recent metadata and History API; Outlook: Graph with delta and token refresh.
+  - Upserts `messages` and `inventory`; classifies intents and records `accountEvidence`; infers/updates `accounts`; updates mailbox `lastSyncAt` and cursors.
+- Inventory and actions
+  - Accounts-first UI lists services with confidence and evidence; Domain inventory retained as secondary view. Unsubscribe triggers one‑click URL or mailto acknowledgement and writes `actionLogs`.
+- AI Suggestion
+  - Dialog calls `/api/ai/suggest-domain`; flow returns domain, confidence, and reason.
 
-- POST /api/sync
-  - Requires: mb cookie (mailbox id set after OAuth callbacks)
-  - Response: { gmail: number, outlook: number, errors: string[], lastSynced: number }
-  - Side effects: updates mailbox.lastSyncAt; persists refreshed Outlook tokens if needed
+## API Endpoints
 
-- GET /api/inventory
-  - Response: { domains: Array<{ domain, count, lastSeen, category, isUnsubscribed?, inventoryId?, mailboxId? }>} (mock items may omit inventoryId)
+- `POST /api/auth/session` — Set/clear session cookie from Firebase ID token.
+- `GET /api/oauth/google/start` / `GET /api/oauth/google/callback`
+- `GET /api/oauth/microsoft/start` / `GET /api/oauth/microsoft/callback`
+- `GET /api/inventory` — Domains for current user with recent emails.
+- `POST /api/sync` — Manual sync for current mailbox (scoped by `mb` cookie).
+- `POST /api/unsubscribe` — One‑click unsubscribe or `mailto:` acknowledgement.
+- `POST /api/ai/suggest-domain` — AI suggestion for unsubscribe domain.
+- `POST /api/inventory/[id]/mark` — Update domain status (`active|moved|ignored`).
+- `GET /api/mailboxes` — List connected mailboxes and email identities.
+- `POST /api/mailboxes/active` — Set active mailbox; optional `mode=merged`.
+- `GET /api/accounts` — List accounts with filters (`emailIdentityId`, `category`, `status`, `minConfidence`).
+- `GET /api/accounts/:id` — Account detail with evidence.
+- `POST /api/accounts/:id/actions` — Execute actions (unsubscribe/link/manual tracking).
+- `GET/POST /api/tasks` — Manage tasks.
+- `GET /api/action-log` — Retrieve audit logs.
+- `POST /api/account/export` — Export user-scoped data summary.
+- `POST /api/account/delete` — Delete user data (headers-first; limited batch size).
 
-- POST /api/unsubscribe
-  - Body: { listUnsubscribe: string, listUnsubscribePost?: string, inventoryId?: string }
-  - Behavior: Performs one-click HTTP unsubscribe if available; otherwise acknowledges mailto. If successful and inventoryId provided, updates inventory status server-side.
+## Setup
 
-## Cookies
+- Install: `npm install`
+- Dev server: `npm run dev` → `http://localhost:9002`
+- AI dev (optional): `npm run genkit:dev` or `npm run genkit:watch`
+- Build: `npm run build`; Start: `npm run start`
+- QA: `npm run lint` and `npm run typecheck`
 
-- mb: httpOnly cookie set by OAuth callbacks, used by /api/sync to restrict operations to the current mailbox. Secure and sameSite=lax; secure is enabled on https.
+## Environment
 
-## Security notes
+115→- `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`
+116→- `MS_OAUTH_CLIENT_ID`, `MS_OAUTH_CLIENT_SECRET`
+117→- `GOOGLE_APPLICATION_CREDENTIALS` (local Admin SDK)
+118→- `ENCRYPTION_KEY_32B` (AES‑256‑GCM key for token encryption)
+119→- Optional: `GEMINI_API_KEY`
 
-- Access and refresh tokens are stored encrypted server-side.
-- No secrets are logged.
+## OAuth Configuration
 
-## Development notes
+- Gmail:
+  - Redirect URIs: `http://localhost:9002/api/oauth/google/callback`, `https://<domain>/api/oauth/google/callback`
+  - Scopes: `https://www.googleapis.com/auth/gmail.metadata`, `openid`, `email`
+- Microsoft:
+  - Redirect URIs: `http://localhost:9002/api/oauth/microsoft/callback`, `https://<domain>/api/oauth/microsoft/callback`
+  - Scopes: `https://graph.microsoft.com/Mail.Read`, `offline_access`, `openid`, `email`, `profile`
 
-- Dev server runs on port 9002 (Next.js Turbopack).
-- If you support multiple mailboxes later, add a selector to update the mb cookie.
+## Security
+
+- Tokens encrypted with AES‑256‑GCM and stored in Firestore.
+- Cookies (`__session`, `mb`) are httpOnly, sameSite=lax, secure on HTTPS.
+- Secrets are never logged.
+- Data minimization: store headers by default; selective content only when classification requires it.
+- Server-side access controls enforced on sensitive collections and APIs.
+
+## Deployment
+
+- Firebase Hosting with frameworks backend (`firebase.json`), region `us-central1`.
+- Scheduled Functions in `src/functions/index.ts` for Gmail History and Outlook Delta.
+- Ensure production env vars and OAuth apps are configured and verified.
+- Observability: structured logs; sync uses retry/backoff for rate limits; cursors recovered on invalidation.
+
+## Troubleshooting
+
+- OAuth failures: verify client IDs, secrets, redirect URIs, and scopes.
+- Sync errors: confirm API permissions; check token refresh for Outlook.
+- Inventory empty: ensure `__session` and `mb` cookies are set after OAuth.
+- AI suggestion errors: verify Genkit config and API key.
+- Accounts empty: trigger manual sync; verify `emailIdentities` created on OAuth.

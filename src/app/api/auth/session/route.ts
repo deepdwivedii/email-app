@@ -22,14 +22,14 @@ export async function POST(req: NextRequest) {
       const response = NextResponse.json({ status: 'success' });
       response.cookies.set(options);
       return response;
-    } catch (error) {
+    } catch {
       return NextResponse.json({ status: 'error', message: 'Unauthorized' }, { status: 401 });
     }
   }
   return NextResponse.json({ status: 'error', message: 'Forbidden' }, { status: 403 });
 }
 
-export async function DELETE(req: NextRequest) {
+export async function DELETE() {
   const response = NextResponse.json({ status: 'success' });
   response.cookies.set({
     name: '__session',

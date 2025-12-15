@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ConfidentialClientApplication } from '@azure/msal-node';
+import { ConfidentialClientApplication, type AuthenticationResult } from '@azure/msal-node';
 import { encryptJson } from '@/lib/server/crypto';
-import { upsertMailbox } from '@/lib/server/db';
+import { upsertMailbox, upsertEmailIdentity } from '@/lib/server/db';
 import { getAuth } from 'firebase-admin/auth';
 import { firebaseAdminApp } from '@/lib/server/firebase-admin';
 
@@ -11,7 +11,7 @@ async function getUserIdFromSessionCookie(req: NextRequest) {
   try {
     const decodedToken = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true);
     return decodedToken.uid;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
 
     const tokenBlobEncrypted = encryptJson({
       accessToken: tokenResponse.accessToken,
-      refreshToken: tokenResponse.refreshToken,
+      refreshToken: (tokenResponse as unknown as { refreshToken?: string }).refreshToken,
       expiresOn: tokenResponse.expiresOn?.toISOString?.() ?? null,
     });
 
@@ -68,6 +68,13 @@ export async function GET(req: NextRequest) {
       tokenBlobEncrypted,
       connectedAt: Date.now(),
       lastSyncAt: Date.now(),
+    });
+    await upsertEmailIdentity({
+      userId,
+      email,
+      provider: 'outlook',
+      mailboxId: saved.id,
+      verifiedAt: Date.now(),
     });
 
     const resp = NextResponse.redirect(`${origin}/dashboard?connected=outlook`);

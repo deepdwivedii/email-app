@@ -71,6 +71,7 @@ export default function DashboardPage() {
           toast({ title: 'Sync complete' });
           setLastSynced(Date.now());
         }
+        router.push('/accounts');
       } else {
         toast({ variant: 'destructive', title: 'Sync failed', description: j?.error || 'Please try again.' });
       }

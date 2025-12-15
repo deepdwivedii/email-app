@@ -8,7 +8,7 @@
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",
     "start": "next start -p 9002",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --ignore-pattern .next/**",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },
@@ -45,6 +45,7 @@
     "embla-carousel-react": "^8.6.0",
     "firebase": "^11.9.1",
     "firebase-admin": "^12.6.0",
+    "firebase-functions": "^4.9.0",
     "genkit": "^1.14.1",
     "google-auth-library": "^9.14.2",
     "lucide-react": "^0.475.0",
@@ -55,16 +56,17 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.54.2",
     "recharts": "^2.15.1",
+    "swr": "^2.2.5",
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",
-    "zod": "^3.24.2",
-    "firebase-functions": "^4.9.0",
-    "swr": "^2.2.5"
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "eslint": "9.39.2",
+    "eslint-config-next": "16.0.10",
     "genkit-cli": "^1.14.1",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",

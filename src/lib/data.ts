@@ -39,7 +39,7 @@ export const mockEmails: Email[] = [
     id: '5',
     from: '"Vercel" <noreply@vercel.com>',
     to: 'user@example.com',
-    subject: 'Deployment "header-harbor" is ready!',
+    subject: 'Deployment "atlas" is ready!',
     date: subDays(now, 2).toISOString(),
     listUnsubscribe: '<https://vercel.com/unsubscribe>',
   },

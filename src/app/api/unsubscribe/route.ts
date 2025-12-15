@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateInventoryStatus } from '@/lib/server/db';
+import { updateInventoryStatus, actionLogsCol, inventoryCol, mailboxesCol, type Inventory, type Mailbox } from '@/lib/server/db';
+import { getAuth } from 'firebase-admin/auth';
+import { firebaseAdminApp } from '@/lib/server/firebase-admin';
 
 function parseListUnsubscribe(value: string | undefined) {
   if (!value) return { urls: [], mailtos: [] as string[] };
@@ -11,12 +13,28 @@ function parseListUnsubscribe(value: string | undefined) {
 
 export async function POST(req: NextRequest) {
   try {
+    const cookie = req.cookies.get('__session')?.value;
+    if (!cookie) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const decoded = await getAuth(firebaseAdminApp).verifySessionCookie(cookie, true).catch(() => null);
+    const userId = decoded?.uid;
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const listUnsubscribe: string | undefined = body.listUnsubscribe;
     const listUnsubscribePost: string | undefined = body.listUnsubscribePost;
     const inventoryId: string | undefined = body.inventoryId;
+    const accountId: string | undefined = body.accountId;
 
     const { urls, mailtos } = parseListUnsubscribe(listUnsubscribe);
+
+    if (inventoryId) {
+      const invRef = await inventoryCol().doc(inventoryId).get();
+      if (!invRef.exists) return NextResponse.json({ error: 'Inventory not found' }, { status: 404 });
+      const inv = invRef.data() as Inventory;
+      const mbRef = await mailboxesCol().doc(inv.mailboxId).get();
+      if (!mbRef.exists || (mbRef.data() as Mailbox).userId !== userId) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
 
     // RFC 8058 One-Click: prefer POST with List-Unsubscribe=One-Click header
     let attempted = false;
@@ -30,6 +48,17 @@ export async function POST(req: NextRequest) {
       });
       if (res.ok) {
         if (inventoryId) await updateInventoryStatus(inventoryId, 'ignored');
+        const id = `${Date.now()}:unsubscribe:http`;
+        await actionLogsCol().doc(id).set({
+          id,
+          userId,
+          accountId,
+          actionType: 'unsubscribe',
+          executionMode: 'http',
+          target: url,
+          status: 'success',
+          createdAt: Date.now(),
+        }, { merge: true }).catch(() => {});
         return NextResponse.json({ status: 'ok', method: 'http', url });
       }
     }
@@ -38,6 +67,17 @@ export async function POST(req: NextRequest) {
       // In a real deployment, you would send an email with subject "unsubscribe"
       // For safety in demo, just acknowledge
       if (inventoryId) await updateInventoryStatus(inventoryId, 'ignored');
+      const id = `${Date.now()}:unsubscribe:mailto`;
+      await actionLogsCol().doc(id).set({
+        id,
+        userId,
+        accountId,
+        actionType: 'unsubscribe',
+        executionMode: 'mailto',
+        target: mailtos[0],
+        status: 'success',
+        createdAt: Date.now(),
+      }, { merge: true }).catch(() => {});
       return NextResponse.json({ status: 'ack', method: 'mailto', to: mailtos[0] });
     }
 

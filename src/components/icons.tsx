@@ -1,20 +1,16 @@
-import { Shield, Mail } from 'lucide-react';
-import type { SVGProps } from 'react';
+import Image from 'next/image';
+import type { ComponentProps } from 'react';
+import logoPng from '../../logo.png';
 
-export function AppLogo(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 100 100"
-      aria-hidden="true"
-      {...props}
-    >
-      <Shield className="h-full w-full fill-current opacity-20" />
-      <Mail className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 fill-current" />
-    </svg>
-  );
+type AppLogoProps = Omit<ComponentProps<typeof Image>, 'src' | 'alt'> & {
+  alt?: string;
+};
+
+export function AppLogo({ alt = 'Atlas logo', ...props }: AppLogoProps) {
+  return <Image src={logoPng} alt={alt} {...props} />;
 }
 
-export function GmailIcon(props: SVGProps<SVGSVGElement>) {
+export function GmailIcon(props: ComponentProps<'svg'>) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -40,7 +36,7 @@ export function GmailIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-export function OutlookIcon(props: SVGProps<SVGSVGElement>) {
+export function OutlookIcon(props: ComponentProps<'svg'>) {
   return (
     <svg
       viewBox="0 0 24 24"

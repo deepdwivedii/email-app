@@ -92,7 +92,7 @@ export default function SuggestUnsubscribeDialog({
       } else {
         toast({ variant: 'destructive', title: 'Unsubscribe failed', description: 'The sender did not accept the request.' });
       }
-    } catch (e) {
+    } catch {
       toast({ variant: 'destructive', title: 'Network error', description: 'Please try again later.' });
     } finally {
       setIsLoading(false);

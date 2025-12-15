@@ -1,9 +1,17 @@
 import { getApps, getApp, initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import fs from 'node:fs';
 
-// Initialize Admin SDK using default credentials. On Firebase Hosting/Functions/App Hosting
-// this uses the built-in service account. Locally, set GOOGLE_APPLICATION_CREDENTIALS.
-const app = getApps().length ? getApp() : initializeApp({ credential: applicationDefault() });
+function createAdminApp() {
+  if (getApps().length) return getApp();
+  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const useFileCred = !!credPath && fs.existsSync(credPath);
+  return useFileCred
+    ? initializeApp({ credential: applicationDefault() })
+    : initializeApp();
+}
+
+const app = createAdminApp();
 
 export const firestore = getFirestore(app);
 export const firebaseAdminApp = app;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listInventory, mailboxesCol, messagesCol } from '@/lib/server/db';
-import { aggregateEmailsByDomain, mockEmails } from '@/lib/data';
+import { listInventory, messagesCol, type Inventory, type Message } from '@/lib/server/db';
+import type { Email } from '@/types';
 import { firebaseAdminApp } from '@/lib/server/firebase-admin';
 import { getAuth } from 'firebase-admin/auth';
 
@@ -10,7 +10,7 @@ async function getUserIdFromSessionCookie(req: NextRequest) {
   try {
     const decodedToken = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true);
     return decodedToken.uid;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -27,11 +27,11 @@ export async function GET(req: NextRequest) {
   const hasUnsubParam = searchParams.get('hasUnsub');
   const lastSeenAfter = searchParams.get('lastSeenAfter');
 
-  const filters: any = { userId };
+  const filters: Parameters<typeof listInventory>[0] = { userId };
   if (hasUnsubParam !== null) filters.hasUnsub = hasUnsubParam === 'true';
   if (lastSeenAfter) filters.lastSeenAfter = Number(lastSeenAfter);
 
-  let items: any[] = [];
+  let items: Inventory[] = [];
   try {
     items = await listInventory(filters);
   } catch (e) {
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   }
 
   const domains = await Promise.all(items.map(async (inv) => {
-    let emails: any[] = [];
+    let emails: Email[] = [];
     try {
       const msgsSnap = await messagesCol()
         .where('mailboxId', '==', inv.mailboxId)
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
         .limit(5)
         .get();
       emails = msgsSnap.docs.map((d) => {
-        const m = d.data() as any;
+        const m = d.data() as Message;
         return {
           id: m.id,
           from: m.from || '',

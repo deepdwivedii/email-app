@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OAuth2Client } from 'google-auth-library';
 import { encryptJson } from '@/lib/server/crypto';
-import { upsertMailbox } from '@/lib/server/db';
+import { upsertMailbox, upsertEmailIdentity } from '@/lib/server/db';
 import { getAuth } from 'firebase-admin/auth';
 import { firebaseAdminApp } from '@/lib/server/firebase-admin';
 
@@ -11,7 +11,7 @@ async function getUserIdFromSessionCookie(req: NextRequest) {
   try {
     const decodedToken = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true);
     return decodedToken.uid;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -52,6 +52,13 @@ export async function GET(req: NextRequest) {
       cursor: historyId,
       connectedAt: Date.now(),
       lastSyncAt: Date.now(),
+    });
+    await upsertEmailIdentity({
+      userId,
+      email: emailAddress,
+      provider: 'gmail',
+      mailboxId: saved.id,
+      verifiedAt: Date.now(),
     });
 
     const resp = NextResponse.redirect(`${origin}/dashboard?connected=gmail`);
