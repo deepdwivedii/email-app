@@ -12,6 +12,8 @@
 - Domain inventory with counts, last seen, unsubscribe status, and recent emails.
 - Safe Unsubscribe: RFC 8058 one-click HTTP when available; `mailto:` acknowledged.
 - AI Suggestion: Gemini via Genkit recommends the most likely unsubscribe domain with confidence and reasoning.
+- Accounts-first UI backed by evidence; Tasks page to track actions.
+- Settings page for privacy controls (export/delete) and a footer link for discoverability.
 
 ## Architecture
 
@@ -19,6 +21,7 @@
 - Firebase Admin for server operations; Firestore for storage.
 - API routes under `src/app/api` for auth/session, OAuth, inventory, sync, unsubscribe, AI, accounts, tasks, action-log, mailboxes, privacy controls.
 - Scheduled Cloud Functions for periodic sync of Gmail History and Outlook Delta.
+- OneSignal service worker stubs exist under `public/` to prevent dev 404s; no push behavior is implemented by default.
 
 ### Directory Overview
 
@@ -81,6 +84,10 @@ actionLogs: {
   - Accounts-first UI lists services with confidence and evidence; Domain inventory retained as secondary view. Unsubscribe triggers one‑click URL or mailto acknowledgement and writes `actionLogs`.
 - AI Suggestion
   - Dialog calls `/api/ai/suggest-domain`; flow returns domain, confidence, and reason.
+- Privacy Controls
+  - Settings page provides export and delete actions backed by server APIs.
+- Merged View (experimental)
+  - Setting active mailbox supports an optional merged mode via `mb_mode` cookie.
 
 ## API Endpoints
 
@@ -94,8 +101,10 @@ actionLogs: {
 - `POST /api/inventory/[id]/mark` — Update domain status (`active|moved|ignored`).
 - `GET /api/mailboxes` — List connected mailboxes and email identities.
 - `POST /api/mailboxes/active` — Set active mailbox; optional `mode=merged`.
+- `POST /api/mailboxes/:id/disconnect` — Disconnect mailbox and delete scoped data.
 - `GET /api/accounts` — List accounts with filters (`emailIdentityId`, `category`, `status`, `minConfidence`).
 - `GET /api/accounts/:id` — Account detail with evidence.
+- `GET /api/accounts/:id/unsubscribe` — Retrieve unsubscribe info for an account.
 - `POST /api/accounts/:id/actions` — Execute actions (unsubscribe/link/manual tracking).
 - `GET/POST /api/tasks` — Manage tasks.
 - `GET /api/action-log` — Retrieve audit logs.
@@ -112,11 +121,11 @@ actionLogs: {
 
 ## Environment
 
-115→- `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`
-116→- `MS_OAUTH_CLIENT_ID`, `MS_OAUTH_CLIENT_SECRET`
-117→- `GOOGLE_APPLICATION_CREDENTIALS` (local Admin SDK)
-118→- `ENCRYPTION_KEY_32B` (AES‑256‑GCM key for token encryption)
-119→- Optional: `GEMINI_API_KEY`
+- `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`
+- `MS_OAUTH_CLIENT_ID`, `MS_OAUTH_CLIENT_SECRET`
+- `GOOGLE_APPLICATION_CREDENTIALS` (local Admin SDK)
+- `ENCRYPTION_KEY_32B` (AES‑256‑GCM key for token encryption)
+- Optional: `GEMINI_API_KEY`
 
 ## OAuth Configuration
 
@@ -149,3 +158,4 @@ actionLogs: {
 - Inventory empty: ensure `__session` and `mb` cookies are set after OAuth.
 - AI suggestion errors: verify Genkit config and API key.
 - Accounts empty: trigger manual sync; verify `emailIdentities` created on OAuth.
+- Repeated 404 for `OneSignalSDKWorker.js`: worker stubs are present under `public/` to prevent dev 404s; integrate OneSignal if push is needed.

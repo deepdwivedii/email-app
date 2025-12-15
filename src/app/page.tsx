@@ -171,6 +171,10 @@ export default function Page() {
             <Link href="/privacy" className="underline">
               Privacy
             </Link>
+            {" · "}
+            <Link href="/settings" className="underline">
+              Settings
+            </Link>
           </div>
       </footer>
     </div>

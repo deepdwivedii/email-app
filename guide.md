@@ -365,3 +365,12 @@ When you’re ready to deploy for real:
 - [ ] `firebase deploy` to Hosting / App Hosting completes.
 
 If you tell me which cloud accounts you’re using (Google workspace vs personal, Azure vs M365, etc.), I can narrow this down further and tailor the steps for exactly your setup.
+
+---
+
+## Updates (Dec 2025)
+- OneSignal: Worker stubs are present under `public/OneSignalSDKWorker.js` and `public/OneSignalSDKUpdaterWorker.js` to prevent dev 404s. No push logic is enabled by default; integrate OneSignal if you need notifications.
+- Navigation: Main nav includes `Dashboard`, `Accounts`, `Mailboxes`, `Tasks`, `Settings` (`src/components/main-nav.tsx`). Footer includes `Privacy` and `Settings` links (`src/app/page.tsx`).
+- Endpoints: In addition to previously listed APIs, the codebase includes:
+  - `POST /api/mailboxes/:id/disconnect` — disconnect mailbox and delete scoped data.
+  - `GET /api/accounts/:id/unsubscribe` — fetch unsubscribe info used by Accounts page actions.

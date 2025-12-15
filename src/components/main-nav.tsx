@@ -65,6 +65,14 @@ export default function MainNav() {
                   Tasks
                 </Link>
               </SheetClose>
+              <SheetClose asChild>
+                <Link
+                  href="/settings"
+                  className="rounded-full px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
+                >
+                  Settings
+                </Link>
+              </SheetClose>
             </nav>
           </SheetContent>
         </Sheet>
@@ -93,6 +101,12 @@ export default function MainNav() {
           className="rounded-full px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
         >
           Tasks
+        </Link>
+        <Link
+          href="/settings"
+          className="rounded-full px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
+        >
+          Settings
         </Link>
       </nav>
     </>

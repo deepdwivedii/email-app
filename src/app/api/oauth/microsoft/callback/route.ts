@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ConfidentialClientApplication, type AuthenticationResult } from '@azure/msal-node';
+import { ConfidentialClientApplication } from '@azure/msal-node';
 import { encryptJson } from '@/lib/server/crypto';
 import { upsertMailbox, upsertEmailIdentity } from '@/lib/server/db';
 import { getAuth } from 'firebase-admin/auth';
