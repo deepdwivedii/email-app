@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { accountsCol, actionLogsCol, type Account } from '@/lib/server/db';
-import { getAuth } from 'firebase-admin/auth';
-import { firebaseAdminApp } from '@/lib/server/firebase-admin';
-
-async function getUserId(req: NextRequest) {
-  const cookie = req.cookies.get('__session')?.value;
-  if (!cookie) return null;
-  try {
-    const decoded = await getAuth(firebaseAdminApp).verifySessionCookie(cookie, true);
-    return decoded.uid;
-  } catch {
-    return null;
-  }
-}
+import { accountsTable, actionLogsTable, type Account } from '@/lib/server/db';
+import { getUserId } from '@/lib/server/auth';
 
 export async function POST(req: NextRequest, context: unknown) {
   try {
@@ -21,9 +9,9 @@ export async function POST(req: NextRequest, context: unknown) {
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const { actionType, target } = body || {};
-    const accRef = await accountsCol().doc(params.id).get();
-    if (!accRef.exists) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-    const acc = accRef.data() as Account;
+    const { data: accs } = await accountsTable().select('*').eq('id', params.id).limit(1);
+    const acc = (accs && accs[0]) as Account | undefined;
+    if (!acc) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     if (acc.userId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     const mailboxId = undefined;
     let status: 'success'|'fail'|'noop' = 'noop';
@@ -50,7 +38,8 @@ export async function POST(req: NextRequest, context: unknown) {
     } else if (actionType === 'close_account') {
       executionMode = 'manual';
       try {
-        await accountsCol().doc(params.id).set({ status: 'closed' }, { merge: true });
+        const { error: updErr } = await accountsTable().update({ status: 'closed' }).eq('id', params.id);
+        if (updErr) throw updErr;
         status = 'success';
       } catch (e) {
         status = 'fail';
@@ -64,7 +53,7 @@ export async function POST(req: NextRequest, context: unknown) {
       status = 'noop';
     }
     const id = `${params.id}:${actionType}:${Date.now()}`;
-    await actionLogsCol().doc(id).set({
+    const { error: logErr } = await actionLogsTable().upsert({
       id,
       userId,
       accountId: params.id,
@@ -75,7 +64,8 @@ export async function POST(req: NextRequest, context: unknown) {
       status,
       error,
       createdAt: Date.now(),
-    }, { merge: true });
+    }).eq('id', id);
+    if (logErr) return NextResponse.json({ error: 'Failed to log action' }, { status: 500 });
     return NextResponse.json({ ok: true, status });
   } catch {
     return NextResponse.json({ error: 'Failed to execute action' }, { status: 500 });

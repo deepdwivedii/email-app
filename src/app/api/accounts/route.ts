@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuth } from 'firebase-admin/auth';
-import { firebaseAdminApp } from '@/lib/server/firebase-admin';
-import { accountsCol, type Account } from '@/lib/server/db';
-
-async function getUserId(req: NextRequest) {
-  const sessionCookie = req.cookies.get('__session')?.value;
-  if (!sessionCookie) return null;
-  try {
-    const decoded = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true);
-    return decoded.uid;
-  } catch {
-    return null;
-  }
-}
+import { accountsTable, type Account } from '@/lib/server/db';
+import { getUserId } from '@/lib/server/auth';
 
 export async function GET(req: NextRequest) {
   const userId = await getUserId(req);
@@ -23,11 +11,11 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get('status') || undefined;
   const minConfidence = Number(searchParams.get('minConfidence') || '0');
 
-  let q: FirebaseFirestore.Query = accountsCol().where('userId', '==', userId);
-  if (emailIdentityId) q = q.where('emailIdentityId', '==', emailIdentityId);
-  if (category) q = q.where('category', '==', category);
-  if (status) q = q.where('status', '==', status);
-  const snap = await q.orderBy('lastSeenAt', 'desc').limit(500).get();
-  const accounts = snap.docs.map(d => d.data() as Account).filter(a => a.confidenceScore >= minConfidence);
+  let query = (await accountsTable()).select('*').eq('userId', userId);
+  if (emailIdentityId) query = query.eq('emailIdentityId', emailIdentityId);
+  if (category) query = query.eq('category', category);
+  if (status) query = query.eq('status', status);
+  const { data } = await query.order('lastSeenAt', { ascending: false }).limit(500);
+  const accounts = (data ?? []).map(a => a as Account).filter(a => a.confidenceScore >= minConfidence);
   return NextResponse.json({ accounts });
 }

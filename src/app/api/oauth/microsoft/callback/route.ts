@@ -2,24 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { encryptJson } from '@/lib/server/crypto';
 import { upsertMailbox, upsertEmailIdentity } from '@/lib/server/db';
-import { getAuth } from 'firebase-admin/auth';
-import { firebaseAdminApp } from '@/lib/server/firebase-admin';
-
-async function getUserIdFromSessionCookie(req: NextRequest) {
-  const sessionCookie = req.cookies.get('__session')?.value;
-  if (!sessionCookie) return null;
-  try {
-    const decodedToken = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true);
-    return decodedToken.uid;
-  } catch {
-    return null;
-  }
-}
+import { getUserId } from '@/lib/server/auth';
 
 export async function GET(req: NextRequest) {
   try {
     const origin = req.nextUrl.origin;
-     const userId = await getUserIdFromSessionCookie(req);
+     const userId = await getUserId(req);
     if (!userId) {
       return NextResponse.redirect(`${origin}/login?error=unauthorized`);
     }

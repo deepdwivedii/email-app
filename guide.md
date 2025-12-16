@@ -172,81 +172,60 @@ MS_OAUTH_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 MS_OAUTH_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-- Production: configure the same values in Firebase environment.
+- Production: configure the same values in your hosting environment.
 
 The app reads them in:
 
 - `src/app/api/oauth/microsoft/start/route.ts:7–8`
 - `src/app/api/oauth/microsoft/callback/route.ts:28–29`
 - `src/app/api/sync/route.ts:168–169`
-- `src/functions/index.ts:191–192`
 
 ---
 
-## 3. Firebase – Client and Admin
+## 3. Supabase – Auth and Database
 
-You already have Firebase client config in `src/lib/firebase.ts:1–12`, and the Admin SDK setup in `src/lib/server/firebase-admin.ts:1–12`.
+This app now uses Supabase for authentication and data storage.
 
 You mainly need to:
 
-- Confirm the Firebase project.
-- Ensure Auth + Firestore are enabled.
-- Decide how Admin credentials are provided (prod vs local).
+- Create a Supabase project.
+- Configure Auth (Email/Password enabled).
+- Provision the Postgres tables used by the app.
 
-### 3.1 Confirm / create Firebase project
+### 3.1 Create Supabase project
 
-1. Go to https://console.firebase.google.com/.
-2. Create or select the project (it should match the IDs in `src/lib/firebase.ts`).
-3. Enable:
-   - **Authentication** (Email/Password, Google Sign-In, etc. as you like).
-   - **Firestore** (in native mode).
-   - Optionally, **App Hosting** or **Hosting**.
+1. Go to https://supabase.com/ → sign in.
+2. Create a new project and note:
+   - `Project URL`
+   - `anon key`
+   - Optional: `service role key` (not required with auth-helpers cookie-based sessions).
 
 ### 3.2 Web app (client) configuration
 
-You already have a Firebase web app config hard-coded in `src/lib/firebase.ts:4–12`. If you want to regenerate it:
+Set the following in `.env.local`:
 
-1. In Firebase console → your project → **Settings → General**.
-2. Under **Your apps** → **Web app**.
-3. Create an app or click an existing one to see:
-   - `apiKey`
-   - `authDomain`
-   - `projectId`
-   - `appId`
-   - `storageBucket`
-   - `messagingSenderId`
-4. Make sure these values match what is in `src/lib/firebase.ts`.
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...
+```
 
-This config is used for frontend auth; it is not secret (though `apiKey` should not be treated as a password).
+The client is initialized in `src/lib/supabase-client.ts`, and sessions are managed using `@supabase/auth-helpers-nextjs` via cookies on route handlers.
 
-### 3.3 Admin SDK (server side)
+### 3.3 Database schema (Postgres)
 
-Admin initialization is here:
+Create tables corresponding to previous Firestore collections:
 
-- `src/lib/server/firebase-admin.ts:1–12`
+- `mailboxes` (`id` text primary key, `userId` text, `provider` text, `email` text, `tokenBlobEncrypted` text, `cursor` text, `connectedAt` bigint, `lastSyncAt` bigint)
+- `messages` (`id` text primary key, `mailboxId` text, `providerMsgId` text, `from` text, `to` text, `subject` text, `receivedAt` bigint, `listUnsubscribe` text, `listUnsubscribePost` text, `dkimDomain` text, `rootDomain` text, `category` text)
+- `inventory` (`id` text primary key, `mailboxId` text, `rootDomain` text, `displayName` text, `firstSeen` bigint, `lastSeen` bigint, `msgCount` int, `hasUnsub` boolean, `changeEmailUrl` text, `status` text)
+- `emailIdentities` (`id` text primary key, `userId` text, `email` text, `provider` text, `mailboxId` text, `verifiedAt` bigint, `createdAt` bigint)
+- `accounts` (`id` text primary key, `userId` text, `emailIdentityId` text, `serviceName` text, `serviceDomain` text, `category` text, `confidenceScore` float, `explanation` text, `firstSeenAt` bigint, `lastSeenAt` bigint, `status` text)
+- `accountEvidence` (`id` text primary key, `userId` text, `accountId` text, `mailboxId` text, `messageId` text, `evidenceType` text, `excerpt` text, `signals` jsonb, `weight` float, `createdAt` bigint)
+- `tasks` (`id` text primary key, `userId` text, `accountId` text, `title` text, `type` text, `status` text, `dueAt` bigint, `createdAt` bigint)
+- `actionLogs` (`id` text primary key, `userId` text, `accountId` text, `mailboxId` text, `actionType` text, `executionMode` text, `target` text, `status` text, `error` text, `createdAt` bigint)
+- `serviceAliases` (`id` text primary key, ...optional fields as needed)
 
-The code prefers Google’s **Application Default Credentials** (ADC). On Firebase Hosting / App Hosting, this uses the built‑in service account automatically, so you don’t need a JSON key file in production.
-
-For **local development**, you have 2 options:
-
-1. **Use a service account file** (recommended when doing server-side admin work locally):
-   - In Firebase console:
-     - Go to **Project Settings → Service accounts**.
-     - Click **Generate new private key** for the Firebase Admin SDK.
-    - Store the downloaded JSON file outside of git (e.g. `~/secrets/atlas-firebase-admin.json`).
-   - Set an environment variable locally (NOT committed to `.env.local` in git, but you can export it in your shell or `.bashrc`):
-
-     ```bash
-    set GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\atlas-firebase-admin.json
-     ```
-
-   - The Admin SDK will pick it up via `applicationDefault()`.
-
-2. **Rely on GCP/Firebase environment**:
-   - Don’t set `GOOGLE_APPLICATION_CREDENTIALS` at all.
-   - When deployed to Firebase Hosting/App Hosting, the platform injects credentials.
-
-In this repo, we’ve intentionally **removed** the broken local pointer `GOOGLE_APPLICATION_CREDENTIALS=./credentials/firebase-service-account-key.json` from `.env.local` so builds don’t fail if that file doesn’t exist.
+Add row-level security (RLS) to scope data to `userId`, and policies to allow the authenticated user to read/write their own records.
 
 ---
 
@@ -312,6 +291,7 @@ GEMINI_API_KEY=your_gemini_key_here
 ```
 
 - Production: set in Firebase environment as `GEMINI_API_KEY`.
+- Production: set in your hosting environment as `GEMINI_API_KEY`.
 
 ---
 
@@ -320,6 +300,10 @@ GEMINI_API_KEY=your_gemini_key_here
 Here is a single template you can fill in:
 
 ```bash
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+
 # AI
 GEMINI_API_KEY=...
 
@@ -334,8 +318,7 @@ GMAIL_OAUTH_CLIENT_SECRET=...
 MS_OAUTH_CLIENT_ID=...
 MS_OAUTH_CLIENT_SECRET=...
 
-# Optional: local Admin SDK via ADC (set in shell, not committed)
-# GOOGLE_APPLICATION_CREDENTIALS=C:\path\to\atlas-firebase-admin.json
+# No Firebase credentials required
 ```
 
 Then:
@@ -352,17 +335,18 @@ npm run start
 When you’re ready to deploy for real:
 
 - [ ] Google project created; Gmail API enabled; web OAuth client with localhost + production redirect URIs.
-- [ ] `GMAIL_OAUTH_CLIENT_ID` and `GMAIL_OAUTH_CLIENT_SECRET` stored in your secret manager and configured in Firebase.
+- [ ] `GMAIL_OAUTH_CLIENT_ID` and `GMAIL_OAUTH_CLIENT_SECRET` stored in your secret manager and configured in your hosting environment.
 - [ ] Microsoft Entra app registration with:
   - [ ] Redirect URIs for localhost and production.
   - [ ] Delegated permissions: `Mail.Read`, `offline_access`, `openid`, `email`, `profile`.
   - [ ] Admin consent granted.
   - [ ] `MS_OAUTH_CLIENT_ID`, `MS_OAUTH_CLIENT_SECRET` stored and configured.
-- [ ] Firebase project with Auth + Firestore enabled and the web client config matching `src/lib/firebase.ts`.
+- [ ] Supabase project created; `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` configured.
+- [ ] Supabase Postgres tables created with RLS enforcing per-user access.
 - [ ] `ENCRYPTION_KEY_32B` set identically across local and prod.
 - [ ] Optional: `GEMINI_API_KEY` set.
 - [ ] `npm run build` succeeds locally.
-- [ ] `firebase deploy` to Hosting / App Hosting completes.
+- [ ] Deploy to your chosen hosting platform.
 
 If you tell me which cloud accounts you’re using (Google workspace vs personal, Azure vs M365, etc.), I can narrow this down further and tailor the steps for exactly your setup.
 

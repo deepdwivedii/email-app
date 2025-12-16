@@ -3,8 +3,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "./ui/button";
 import Link from "next/link";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase-client";
 import { useRouter } from "next/navigation";
 
 export default function AuthButton() {
@@ -12,7 +11,7 @@ export default function AuthButton() {
   const router = useRouter();
 
   const handleSignOut = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut();
     router.push('/');
   };
 

@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { tasksCol, type Task } from '@/lib/server/db';
-import { getAuth } from 'firebase-admin/auth';
-import { firebaseAdminApp } from '@/lib/server/firebase-admin';
-
-async function getUserId(req: NextRequest) {
-  const cookie = req.cookies.get('__session')?.value;
-  if (!cookie) return null;
-  try {
-    const decoded = await getAuth(firebaseAdminApp).verifySessionCookie(cookie, true);
-    return decoded.uid;
-  } catch {
-    return null;
-  }
-}
+import { tasksTable, type Task } from '@/lib/server/db';
+import { getUserId } from '@/lib/server/auth';
 
 export async function GET(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return NextResponse.json({ tasks: [] }, { status: 200 });
-  const q: FirebaseFirestore.Query = tasksCol().where('userId', '==', userId);
-  const snap = await q.orderBy('createdAt', 'desc').limit(200).get();
-  return NextResponse.json({ tasks: snap.docs.map(d => d.data() as Task) });
+  const { data } = await (await tasksTable())
+    .select('*')
+    .eq('userId', userId)
+    .order('createdAt', { ascending: false })
+    .limit(200);
+  return NextResponse.json({ tasks: (data ?? []) as Task[] });
 }
 
 export async function POST(req: NextRequest) {
@@ -28,7 +19,7 @@ export async function POST(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const id = body.id || String(Date.now());
-    await tasksCol().doc(id).set({
+    const { error } = await (await tasksTable()).upsert({
       id,
       userId,
       accountId: body.accountId,
@@ -37,7 +28,8 @@ export async function POST(req: NextRequest) {
       status: body.status || 'open',
       dueAt: body.dueAt,
       createdAt: Date.now(),
-    }, { merge: true });
+    }).eq('id', id);
+    if (error) throw error;
     return NextResponse.json({ ok: true, id });
   } catch {
     return NextResponse.json({ error: 'Failed to write task' }, { status: 500 });
@@ -51,17 +43,18 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json();
     const id = body.id;
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
-    const ref = tasksCol().doc(id);
-    const doc = await ref.get();
-    if (!doc.exists || (doc.data() as Task).userId !== userId) {
+    const { data } = await (await tasksTable()).select('userId').eq('id', id).limit(1);
+    const docUserId = data && data[0]?.userId;
+    if (!docUserId || docUserId !== userId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    await ref.set({
+    const { error } = await (await tasksTable()).update({
       status: body.status,
       dueAt: body.dueAt,
       title: body.title,
       type: body.type,
-    }, { merge: true });
+    }).eq('id', id);
+    if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: 'Failed to update task' }, { status: 500 });
@@ -75,12 +68,13 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
-    const ref = tasksCol().doc(id);
-    const doc = await ref.get();
-    if (!doc.exists || (doc.data() as Task).userId !== userId) {
+    const { data } = await (await tasksTable()).select('userId').eq('id', id).limit(1);
+    const docUserId = data && data[0]?.userId;
+    if (!docUserId || docUserId !== userId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    await ref.delete();
+    const { error } = await (await tasksTable()).delete().eq('id', id);
+    if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: 'Failed to delete task' }, { status: 500 });

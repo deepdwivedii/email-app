@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,12 +29,55 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
       // Redirect is now handled by the useEffect hook
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Login Failed",
+        description: error.message,
+      });
+      setLoading(false);
+    }
+  };
+
+  const handleMagicLink = async () => {
+    setLoading(true);
+    try {
+      const origin = window.location.origin;
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: origin },
+      });
+      if (error) throw error;
+      toast({
+        title: "Check your email",
+        description: "We sent you a magic link to sign in.",
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Magic Link Failed",
+        description: error.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOAuth = async (provider: 'google' | 'github' | 'azure') => {
+    setLoading(true);
+    try {
+      const origin = window.location.origin;
+      await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: origin },
+      });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "OAuth Sign-In Failed",
         description: error.message,
       });
       setLoading(false);
@@ -77,10 +119,24 @@ export default function LoginPage() {
               />
             </div>
           </CardContent>
-          <CardFooter className="flex flex-col gap-4">
+          <CardFooter className="flex flex-col gap-3">
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Signing In...' : 'Sign In'}
             </Button>
+            <Button type="button" variant="outline" className="w-full" onClick={handleMagicLink} disabled={loading || !email}>
+              Send Magic Link
+            </Button>
+            <div className="grid grid-cols-3 gap-2">
+              <Button type="button" variant="secondary" onClick={() => handleOAuth('google')} disabled={loading}>
+                Google
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => handleOAuth('github')} disabled={loading}>
+                GitHub
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => handleOAuth('azure')} disabled={loading}>
+                Microsoft
+              </Button>
+            </div>
             <div className="text-center text-sm">
               Don&apos;t have an account?{" "}
               <Link href="/signup" className="underline">

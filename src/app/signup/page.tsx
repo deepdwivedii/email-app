@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,13 +29,26 @@ export default function SignUpPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      // Redirect is now handled by the useEffect hook
+      const origin = window.location.origin;
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: origin },
+      });
+      if (error) throw error;
+      if (data.user && !data.session) {
+        toast({
+          title: "Check your email",
+          description: "We sent you a confirmation link to complete signup.",
+        });
+        setLoading(false);
+        return;
+      }
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Sign Up Failed",
-        description: error.message,
+        description: `${error.message || "Unknown error"}${error.status ? ` (status ${error.status})` : ""}`,
       });
       setLoading(false);
     }

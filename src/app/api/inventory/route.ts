@@ -1,22 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listInventory, messagesCol, type Inventory, type Message } from '@/lib/server/db';
+import { listInventory, messagesTable, type Inventory, type Message } from '@/lib/server/db';
 import type { Email } from '@/types';
-import { firebaseAdminApp } from '@/lib/server/firebase-admin';
-import { getAuth } from 'firebase-admin/auth';
-
-async function getUserIdFromSessionCookie(req: NextRequest) {
-  const sessionCookie = req.cookies.get('__session')?.value;
-  if (!sessionCookie) return null;
-  try {
-    const decodedToken = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true);
-    return decodedToken.uid;
-  } catch {
-    return null;
-  }
-}
+import { getUserId } from '@/lib/server/auth';
 
 export async function GET(req: NextRequest) {
-  const userId = await getUserIdFromSessionCookie(req);
+  const userId = await getUserId(req);
   if (!userId) {
     // Return empty inventory if not logged in.
     // The UI will guide them to login/signup.
@@ -47,24 +35,21 @@ export async function GET(req: NextRequest) {
   const domains = await Promise.all(items.map(async (inv) => {
     let emails: Email[] = [];
     try {
-      const msgsSnap = await messagesCol()
-        .where('mailboxId', '==', inv.mailboxId)
-        .where('rootDomain', '==', inv.rootDomain)
-        .orderBy('receivedAt', 'desc')
-        .limit(5)
-        .get();
-      emails = msgsSnap.docs.map((d) => {
-        const m = d.data() as Message;
-        return {
-          id: m.id,
-          from: m.from || '',
-          to: m.to || '',
-          subject: m.subject || '',
-          date: new Date(m.receivedAt).toISOString(),
-          listUnsubscribe: m.listUnsubscribe,
-          listUnsubscribePost: m.listUnsubscribePost,
-        };
-      });
+      const { data } = await messagesTable()
+        .select('*')
+        .eq('mailboxId', inv.mailboxId)
+        .eq('rootDomain', inv.rootDomain)
+        .order('receivedAt', { ascending: false })
+        .limit(5);
+      emails = (data ?? []).map((m) => ({
+        id: (m as Message).id,
+        from: (m as Message).from || '',
+        to: (m as Message).to || '',
+        subject: (m as Message).subject || '',
+        date: new Date((m as Message).receivedAt).toISOString(),
+        listUnsubscribe: (m as Message).listUnsubscribe,
+        listUnsubscribePost: (m as Message).listUnsubscribePost,
+      }));
     } catch (err) {
       console.warn('Message fetch skipped for', inv.rootDomain, (err as Error)?.message);
     }

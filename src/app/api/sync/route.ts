@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mailboxesCol, messagesCol, inventoryCol, emailIdentitiesCol, type Mailbox } from '@/lib/server/db';
+import { mailboxesTable, messagesTable, inventoryTable, emailIdentitiesTable, type Mailbox, type Inventory } from '@/lib/server/db';
 import { classifyMessage } from '@/lib/server/classify';
 import { recordEvidenceAndInfer } from '@/lib/server/infer';
 import { decryptJson, encryptJson } from '@/lib/server/crypto';
 import { OAuth2Client } from 'google-auth-library';
-import { FieldValue } from 'firebase-admin/firestore';
 import { extractRegistrableDomain } from '@/lib/server/domain';
 import { fetchWithRetry } from '@/lib/server/fetch';
-import { getAuth } from 'firebase-admin/auth';
-import { firebaseAdminApp } from '@/lib/server/firebase-admin';
+import { getUserId } from '@/lib/server/auth';
 
 // domain extraction moved to src/lib/server/domain.ts
 
@@ -22,43 +20,46 @@ async function upsertMessageAndInventory(mb: Mailbox, msg: {
   listUnsubscribePost?: string;
 }) {
   const msgId = `${mb.id}:${msg.providerMsgId}`;
-  const msgRef = messagesCol().doc(msgId);
-  await msgRef.set(
-    {
-      id: msgId,
-      mailboxId: mb.id,
-      providerMsgId: msg.providerMsgId,
-      from: msg.from,
-      to: msg.to,
-      subject: msg.subject,
-      receivedAt: msg.receivedAt,
-      listUnsubscribe: msg.listUnsubscribe,
-      listUnsubscribePost: msg.listUnsubscribePost,
-      rootDomain: extractRegistrableDomain(msg.from),
-    },
-    { merge: true }
-  );
+  await messagesTable().upsert({
+    id: msgId,
+    mailboxId: mb.id,
+    providerMsgId: msg.providerMsgId,
+    from: msg.from,
+    to: msg.to,
+    subject: msg.subject,
+    receivedAt: msg.receivedAt,
+    listUnsubscribe: msg.listUnsubscribe,
+    listUnsubscribePost: msg.listUnsubscribePost,
+    rootDomain: extractRegistrableDomain(msg.from),
+  }).eq('id', msgId);
 
   const rootDomain = extractRegistrableDomain(msg.from);
   if (!rootDomain) return;
   const invId = `${mb.id}:${rootDomain}`;
-  const invRef = inventoryCol().doc(invId);
-  await invRef.set(
-    {
+  const { data: invs } = await inventoryTable().select('*').eq('id', invId).limit(1);
+  const existing = (invs && invs[0]) as Inventory | undefined;
+  if (!existing) {
+    await inventoryTable().insert({
       id: invId,
       mailboxId: mb.id,
       rootDomain,
-      firstSeen: FieldValue.serverTimestamp(),
+      firstSeen: Date.now(),
       lastSeen: msg.receivedAt,
-      msgCount: FieldValue.increment(1),
+      msgCount: 1,
       hasUnsub: !!msg.listUnsubscribe,
       status: 'active',
-    },
-    { merge: true }
-  );
+    });
+  } else {
+    await inventoryTable().update({
+      lastSeen: msg.receivedAt,
+      msgCount: (existing.msgCount || 0) + 1,
+      hasUnsub: existing.hasUnsub || !!msg.listUnsubscribe,
+      status: existing.status || 'active',
+    }).eq('id', invId);
+  }
   try {
-    const idSnap = await emailIdentitiesCol().where('mailboxId', '==', mb.id).limit(1).get();
-    const emailIdentityId = idSnap.docs[0]?.id;
+    const { data: ids } = await emailIdentitiesTable().select('id').eq('mailboxId', mb.id).limit(1);
+    const emailIdentityId = ids && ids[0]?.id;
     if (emailIdentityId) {
       const classification = classifyMessage({
         from: msg.from,
@@ -92,17 +93,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const sessionCookie = req.cookies.get('__session')?.value;
-  if (!sessionCookie) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  const decoded = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true).catch(() => null);
-  const sessionUserId = decoded?.uid;
+  const sessionUserId = await getUserId(req);
   if (!sessionUserId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const mbDoc = await mailboxesCol().doc(currentMailboxId).get();
-  if (!mbDoc.exists || (mbDoc.data() as Mailbox).userId !== sessionUserId) {
+  const { data: mbs } = await mailboxesTable().select('*').eq('id', currentMailboxId).limit(1);
+  const mbDoc = (mbs && mbs[0]) as Mailbox | undefined;
+  if (!mbDoc || mbDoc.userId !== sessionUserId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -111,10 +108,8 @@ export async function POST(req: NextRequest) {
     const clientId = process.env.GMAIL_OAUTH_CLIENT_ID as string | undefined;
     const clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET as string | undefined;
     if (clientId && clientSecret) {
-      const maybeDoc = await mailboxesCol().doc(currentMailboxId).get();
-      const docs = maybeDoc.exists && (maybeDoc.data() as Mailbox).provider === 'gmail' ? [maybeDoc] : [];
-      for (const doc of docs) {
-        const mb = doc.data() as Mailbox;
+      const maybe = mbDoc && mbDoc.provider === 'gmail' ? [mbDoc] : [];
+      for (const mb of maybe) {
         try {
           type GmailTokenBlob = { access_token: string; refresh_token: string };
           const tokens = decryptJson<GmailTokenBlob>(mb.tokenBlobEncrypted);
@@ -154,7 +149,7 @@ export async function POST(req: NextRequest) {
               });
               results.gmail++;
             }
-            await mailboxesCol().doc(mb.id).set({ lastSyncAt: Date.now() }, { merge: true });
+            await mailboxesTable().update({ lastSyncAt: Date.now() }).eq('id', mb.id);
           }
         } catch (e) {
           results.errors.push(`gmail:${mb.email}:${(e as Error)?.message || String(e)}`);
@@ -170,10 +165,8 @@ export async function POST(req: NextRequest) {
     const clientId = process.env.MS_OAUTH_CLIENT_ID as string | undefined;
     const clientSecret = process.env.MS_OAUTH_CLIENT_SECRET as string | undefined;
     if (clientId && clientSecret) {
-      const maybeDoc = await mailboxesCol().doc(currentMailboxId).get();
-      const docs = maybeDoc.exists && (maybeDoc.data() as Mailbox).provider === 'outlook' ? [maybeDoc] : [];
-      for (const doc of docs) {
-        const mb = doc.data() as Mailbox;
+      const maybe = mbDoc && mbDoc.provider === 'outlook' ? [mbDoc] : [];
+      for (const mb of maybe) {
         try {
           type OutlookTokenBlob = { accessToken: string | null; refreshToken: string; expiresOn: string | null };
           const tokenBlob = decryptJson<OutlookTokenBlob>(mb.tokenBlobEncrypted);
@@ -209,10 +202,7 @@ export async function POST(req: NextRequest) {
                 refreshToken: tj.refresh_token || tokenBlob.refreshToken,
                 expiresOn: tj.expires_in ? new Date(Date.now() + tj.expires_in * 1000).toISOString() : null,
               };
-              await mailboxesCol().doc(mb.id).set(
-                { tokenBlobEncrypted: encryptJson(newBlob) },
-                { merge: true }
-              );
+              await mailboxesTable().update({ tokenBlobEncrypted: encryptJson(newBlob) }).eq('id', mb.id);
               res = await fetchMessages(accessToken!);
             }
           }
@@ -242,7 +232,7 @@ export async function POST(req: NextRequest) {
             });
             results.outlook++;
           }
-          await mailboxesCol().doc(mb.id).set({ lastSyncAt: Date.now() }, { merge: true });
+          await mailboxesTable().update({ lastSyncAt: Date.now() }).eq('id', mb.id);
         } catch (e) {
           results.errors.push(`outlook:${mb.email}:${(e as Error)?.message || String(e)}`);
         }

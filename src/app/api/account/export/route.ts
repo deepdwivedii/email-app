@@ -1,46 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuth } from 'firebase-admin/auth';
-import { firebaseAdminApp } from '@/lib/server/firebase-admin';
-import { mailboxesCol, inventoryCol, accountsCol } from '@/lib/server/db';
-
-async function getUserId(req: NextRequest) {
-  const cookie = req.cookies.get('__session')?.value;
-  if (!cookie) return null;
-  try {
-    const decoded = await getAuth(firebaseAdminApp).verifySessionCookie(cookie, true);
-    return decoded.uid;
-  } catch {
-    return null;
-  }
-}
+import { mailboxesTable, inventoryTable, accountsTable } from '@/lib/server/db';
+import { getUserId } from '@/lib/server/auth';
 
 export async function POST(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const mb = await mailboxesCol().where('userId', '==', userId).get();
-  const acc = await accountsCol().where('userId', '==', userId).get();
-  const mailboxIds = mb.docs.map(d => d.id);
-  let inventoryDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  const { data: mailboxes } = await (await mailboxesTable()).select('*').eq('userId', userId);
+  const { data: accounts } = await (await accountsTable()).select('*').eq('userId', userId);
+  const mailboxIds = (mailboxes ?? []).map(m => m.id);
+  let inventoryCount = 0;
   if (mailboxIds.length) {
-    const chunks: string[][] = [];
-    for (let i = 0; i < mailboxIds.length; i += 10) {
-      chunks.push(mailboxIds.slice(i, i + 10));
-    }
-    for (const chunk of chunks) {
-      try {
-        const snap = await inventoryCol().where('mailboxId', 'in', chunk).get();
-        inventoryDocs = inventoryDocs.concat(snap.docs);
-      } catch {}
-    }
+    const { count } = await (await inventoryTable())
+      .select('*', { count: 'exact', head: true })
+      .in('mailboxId', mailboxIds);
+    inventoryCount = count ?? 0;
   }
   return NextResponse.json({
-    mailboxes: mb.docs.map(d => d.data()),
-    accounts: acc.docs.map(d => d.data()),
+    mailboxes,
+    accounts,
     // For size, omit messages/evidence full export in v1; add later with pagination
     summary: {
-      mailboxesCount: mb.size,
-      accountsCount: acc.size,
-      inventoryCount: inventoryDocs.length,
+      mailboxesCount: mailboxes?.length ?? 0,
+      accountsCount: accounts?.length ?? 0,
+      inventoryCount,
     },
   });
 }

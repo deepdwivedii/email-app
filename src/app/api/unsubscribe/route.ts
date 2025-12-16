@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateInventoryStatus, actionLogsCol, inventoryCol, mailboxesCol, type Inventory, type Mailbox } from '@/lib/server/db';
-import { getAuth } from 'firebase-admin/auth';
-import { firebaseAdminApp } from '@/lib/server/firebase-admin';
+import { updateInventoryStatus, actionLogsTable, inventoryTable, mailboxesTable, type Inventory, type Mailbox } from '@/lib/server/db';
+import { getUserId } from '@/lib/server/auth';
 
 function parseListUnsubscribe(value: string | undefined) {
   if (!value) return { urls: [], mailtos: [] as string[] };
@@ -13,10 +12,7 @@ function parseListUnsubscribe(value: string | undefined) {
 
 export async function POST(req: NextRequest) {
   try {
-    const cookie = req.cookies.get('__session')?.value;
-    if (!cookie) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    const decoded = await getAuth(firebaseAdminApp).verifySessionCookie(cookie, true).catch(() => null);
-    const userId = decoded?.uid;
+    const userId = await getUserId(req);
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const body = await req.json();
     const listUnsubscribe: string | undefined = body.listUnsubscribe;
@@ -27,11 +23,12 @@ export async function POST(req: NextRequest) {
     const { urls, mailtos } = parseListUnsubscribe(listUnsubscribe);
 
     if (inventoryId) {
-      const invRef = await inventoryCol().doc(inventoryId).get();
-      if (!invRef.exists) return NextResponse.json({ error: 'Inventory not found' }, { status: 404 });
-      const inv = invRef.data() as Inventory;
-      const mbRef = await mailboxesCol().doc(inv.mailboxId).get();
-      if (!mbRef.exists || (mbRef.data() as Mailbox).userId !== userId) {
+      const { data: invs } = await inventoryTable().select('*').eq('id', inventoryId).limit(1);
+      const inv = (invs && invs[0]) as Inventory | undefined;
+      if (!inv) return NextResponse.json({ error: 'Inventory not found' }, { status: 404 });
+      const { data: mbs } = await mailboxesTable().select('*').eq('id', inv.mailboxId).limit(1);
+      const mb = (mbs && mbs[0]) as Mailbox | undefined;
+      if (!mb || mb.userId !== userId) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }
@@ -49,16 +46,20 @@ export async function POST(req: NextRequest) {
       if (res.ok) {
         if (inventoryId) await updateInventoryStatus(inventoryId, 'ignored');
         const id = `${Date.now()}:unsubscribe:http`;
-        await actionLogsCol().doc(id).set({
-          id,
-          userId,
-          accountId,
-          actionType: 'unsubscribe',
-          executionMode: 'http',
-          target: url,
-          status: 'success',
-          createdAt: Date.now(),
-        }, { merge: true }).catch(() => {});
+        try {
+          await actionLogsTable()
+            .upsert({
+              id,
+              userId,
+              accountId,
+              actionType: 'unsubscribe',
+              executionMode: 'http',
+              target: url,
+              status: 'success',
+              createdAt: Date.now(),
+            })
+            .eq('id', id);
+        } catch {}
         return NextResponse.json({ status: 'ok', method: 'http', url });
       }
     }
@@ -68,16 +69,20 @@ export async function POST(req: NextRequest) {
       // For safety in demo, just acknowledge
       if (inventoryId) await updateInventoryStatus(inventoryId, 'ignored');
       const id = `${Date.now()}:unsubscribe:mailto`;
-      await actionLogsCol().doc(id).set({
-        id,
-        userId,
-        accountId,
-        actionType: 'unsubscribe',
-        executionMode: 'mailto',
-        target: mailtos[0],
-        status: 'success',
-        createdAt: Date.now(),
-      }, { merge: true }).catch(() => {});
+      try {
+        await actionLogsTable()
+          .upsert({
+            id,
+            userId,
+            accountId,
+            actionType: 'unsubscribe',
+            executionMode: 'mailto',
+            target: mailtos[0],
+            status: 'success',
+            createdAt: Date.now(),
+          })
+          .eq('id', id);
+      } catch {}
       return NextResponse.json({ status: 'ack', method: 'mailto', to: mailtos[0] });
     }
 

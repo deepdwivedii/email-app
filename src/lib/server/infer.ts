@@ -1,4 +1,4 @@
-import { accountsCol, accountEvidenceCol, serviceAliasesCol, type Account, type AccountEvidence } from '@/lib/server/db';
+import { accountsTable, accountEvidenceTable, serviceAliasesTable, type Account, type AccountEvidence } from '@/lib/server/db';
 
 type InferInput = {
   userId: string;
@@ -18,9 +18,9 @@ type InferInput = {
 
 async function resolveAlias(raw: string) {
   try {
-    const doc = await serviceAliasesCol().doc(raw).get();
-    const data = doc.exists ? doc.data() as Record<string, unknown> : null;
-    if (data?.canonical) return String(data.canonical).toLowerCase();
+    const { data } = await serviceAliasesTable().select('*').eq('id', raw).limit(1);
+    const row = data && (data[0] as Record<string, unknown>);
+    if (row?.canonical) return String(row.canonical).toLowerCase();
   } catch {}
   return null;
 }
@@ -76,10 +76,10 @@ export async function recordEvidenceAndInfer(input: InferInput) {
     weight: input.weight,
     createdAt: Date.now(),
   };
-  await accountEvidenceCol().doc(evidenceId).set(ev, { merge: true });
+  await accountEvidenceTable().upsert(ev).eq('id', evidenceId);
 
-  const accountRef = accountsCol().doc(accountId);
-  const existing = await accountRef.get();
+  const { data: existingRows } = await accountsTable().select('*').eq('id', accountId).limit(1);
+  const existing = existingRows && existingRows[0] as Account | undefined;
   const explanation = buildExplanation(input.intent, input.signals, domain);
   const evidenceType = mapIntentToEvidenceType(input.intent);
   const strongEvidence = ['welcome','verify','billing','login','reset','security'].includes(evidenceType);
@@ -106,28 +106,28 @@ export async function recordEvidenceAndInfer(input: InferInput) {
     status: 'unknown',
   };
 
-  if (!existing.exists) {
+  if (!existing) {
     if (strongEvidence || input.weight >= createThreshold) {
-      await accountRef.set({
+      await accountsTable().upsert({
         ...base,
         confidenceScore: input.weight,
         firstSeenAt: input.receivedAt,
-      } as Account, { merge: true });
+      } as Account).eq('id', accountId);
     } else {
       return;
     }
   } else {
-    const acc = existing.data() as Account;
+    const acc = existing as Account;
     const recencyDays = Math.max(0, (Date.now() - input.receivedAt) / (1000 * 60 * 60 * 24));
     const recencyFactor = recencyDays < 7 ? 0.15 : recencyDays < 30 ? 0.08 : 0.03;
     const typeFactor = strongEvidence ? 0.2 : evidenceType === 'newsletter' ? 0.02 : 0.08;
     const increment = Math.max(0.01, input.weight * (recencyFactor + typeFactor));
     const confidenceScore = Math.min(1, (acc.confidenceScore || 0) + increment);
-    await accountRef.set({
+    await accountsTable().update({
       ...base,
       firstSeenAt: acc.firstSeenAt || input.receivedAt,
       confidenceScore,
-    } as Account, { merge: true });
+    } as Account).eq('id', accountId);
   }
 }
 

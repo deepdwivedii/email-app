@@ -1,28 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuth } from 'firebase-admin/auth';
-import { firebaseAdminApp } from '@/lib/server/firebase-admin';
-import { mailboxesCol, emailIdentitiesCol } from '@/lib/server/db';
-
-async function getUserIdFromSessionCookie(req: NextRequest) {
-  const sessionCookie = req.cookies.get('__session')?.value;
-  if (!sessionCookie) return null;
-  try {
-    const decodedToken = await getAuth(firebaseAdminApp).verifySessionCookie(sessionCookie, true);
-    return decodedToken.uid;
-  } catch {
-    return null;
-  }
-}
+import { mailboxesTable, emailIdentitiesTable } from '@/lib/server/db';
+import { getUserId } from '@/lib/server/auth';
+import { decryptJson, encryptJson } from '@/lib/server/crypto';
+import { OAuth2Client } from 'google-auth-library';
+import { fetchWithRetry } from '@/lib/server/fetch';
 
 export async function GET(req: NextRequest) {
-  const userId = await getUserIdFromSessionCookie(req);
+  const userId = await getUserId(req);
   if (!userId) return NextResponse.json({ mailboxes: [], identities: [] });
-  const [mbSnap, idSnap] = await Promise.all([
-    mailboxesCol().where('userId', '==', userId).get(),
-    emailIdentitiesCol().where('userId', '==', userId).get(),
+  const [{ data: mailboxes }, { data: identities }] = await Promise.all([
+    (await mailboxesTable()).select('*').eq('userId', userId),
+    (await emailIdentitiesTable()).select('*').eq('userId', userId),
   ]);
-  const mailboxes = mbSnap.docs.map(d => d.data());
-  const identities = idSnap.docs.map(d => d.data());
-  return NextResponse.json({ mailboxes, identities });
-}
 
+  const clientIdG = process.env.GMAIL_OAUTH_CLIENT_ID as string | undefined;
+  const clientSecretG = process.env.GMAIL_OAUTH_CLIENT_SECRET as string | undefined;
+  const clientIdM = process.env.MS_OAUTH_CLIENT_ID as string | undefined;
+  const clientSecretM = process.env.MS_OAUTH_CLIENT_SECRET as string | undefined;
+
+  type MailboxRow = {
+    id: string;
+    userId: string;
+    provider: 'gmail'|'outlook';
+    email: string;
+    tokenBlobEncrypted: string;
+    connectedAt: number;
+    lastSyncAt?: number;
+  };
+  const enriched: Array<MailboxRow & { health: 'active'|'error'; statusText?: string }> = await Promise.all((mailboxes ?? []).map(async (mb: MailboxRow) => {
+    let health: 'active' | 'error' = 'active';
+    let statusText: string | undefined;
+    try {
+      if (mb.provider === 'gmail' && clientIdG && clientSecretG) {
+        type GmailTokenBlob = { access_token: string; refresh_token: string };
+        const tokens = decryptJson<GmailTokenBlob>(mb.tokenBlobEncrypted);
+        const oauth = new OAuth2Client({ clientId: clientIdG, clientSecret: clientSecretG });
+        oauth.setCredentials({ access_token: tokens.access_token, refresh_token: tokens.refresh_token });
+        const fresh = await oauth.getAccessToken();
+        const accessToken = fresh?.token || tokens.access_token;
+        const res = await fetchWithRetry('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) {
+          health = 'error';
+          statusText = `Gmail auth ${res.status}`;
+        }
+      } else if (mb.provider === 'outlook' && clientIdM && clientSecretM) {
+        type OutlookTokenBlob = { accessToken: string | null; refreshToken: string; expiresOn: string | null };
+        const tokenBlob = decryptJson<OutlookTokenBlob>(mb.tokenBlobEncrypted);
+        let accessToken: string | null = tokenBlob.accessToken || null;
+        const check = async (token: string) =>
+          fetchWithRetry('https://graph.microsoft.com/v1.0/me', { headers: { Authorization: `Bearer ${token}` } });
+        let res = await check(accessToken!);
+        if (res.status === 401 || res.status === 403) {
+          const form = new URLSearchParams({
+            client_id: clientIdM!,
+            client_secret: clientSecretM!,
+            grant_type: 'refresh_token',
+            refresh_token: tokenBlob.refreshToken,
+            scope: 'https://graph.microsoft.com/Mail.Read offline_access openid email profile',
+          });
+          const tr = await fetchWithRetry('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: form.toString(),
+          });
+          if (tr.ok) {
+            const tj = await tr.json();
+            accessToken = tj.access_token;
+            const newBlob = {
+              accessToken: tj.access_token,
+              refreshToken: tj.refresh_token || tokenBlob.refreshToken,
+              expiresOn: tj.expires_in ? new Date(Date.now() + tj.expires_in * 1000).toISOString() : null,
+            };
+            await (await mailboxesTable()).update({ tokenBlobEncrypted: encryptJson(newBlob) }).eq('id', mb.id);
+            res = await check(accessToken!);
+          }
+        }
+        if (!res.ok) {
+          health = 'error';
+          statusText = `Outlook auth ${res.status}`;
+        }
+      }
+    } catch (e) {
+      health = 'error';
+      statusText = (e as Error)?.message || 'Verification failed';
+    }
+    return { ...mb, health, statusText };
+  }));
+
+  return NextResponse.json({ mailboxes: enriched, identities });
+}

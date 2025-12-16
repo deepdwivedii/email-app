@@ -18,7 +18,7 @@
 ## Architecture
 
 - Next.js 15 (App Router) with React 18 and TypeScript.
-- Firebase Admin for server operations; Firestore for storage.
+- Supabase for authentication and Postgres storage.
 - API routes under `src/app/api` for auth/session, OAuth, inventory, sync, unsubscribe, AI, accounts, tasks, action-log, mailboxes, privacy controls.
 - Scheduled Cloud Functions for periodic sync of Gmail History and Outlook Delta.
 - OneSignal service worker stubs exist under `public/` to prevent dev 404s; no push behavior is implemented by default.
@@ -30,13 +30,13 @@ src/
 ├── ai/                         # Genkit config and flows
 ├── app/                        # App Router + API endpoints
 ├── components/                 # UI components and dialogs
-├── functions/                  # Firebase Functions (scheduled sync)
+├── functions/                  # (removed) previously Firebase Functions
 ├── hooks/                      # Auth and utilities
-├── lib/                        # Server/client libs (crypto, db, firebase)
+├── lib/                        # Server/client libs (crypto, db, supabase)
 └── types/                      # Shared types
 ```
 
-### Data Model (Firestore)
+### Data Model (Supabase Postgres)
 
 ```
 mailboxes: {
@@ -74,7 +74,7 @@ actionLogs: {
 ## Key Flows
 
 - Login and session cookie
-  - Client signs in via Firebase Auth; server sets `__session` cookie.
+  - Client signs in via Supabase Auth; sessions handled via cookies.
 - OAuth Connect (Gmail/Outlook)
   - Start → Consent → Callback → Token exchange → Encrypted storage → Set `mb` cookie.
 - Sync (manual and scheduled)
@@ -91,7 +91,7 @@ actionLogs: {
 
 ## API Endpoints
 
-- `POST /api/auth/session` — Set/clear session cookie from Firebase ID token.
+// Session handling is via Supabase cookies; no custom session endpoint.
 - `GET /api/oauth/google/start` / `GET /api/oauth/google/callback`
 - `GET /api/oauth/microsoft/start` / `GET /api/oauth/microsoft/callback`
 - `GET /api/inventory` — Domains for current user with recent emails.
@@ -123,7 +123,7 @@ actionLogs: {
 
 - `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`
 - `MS_OAUTH_CLIENT_ID`, `MS_OAUTH_CLIENT_SECRET`
-- `GOOGLE_APPLICATION_CREDENTIALS` (local Admin SDK)
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `ENCRYPTION_KEY_32B` (AES‑256‑GCM key for token encryption)
 - Optional: `GEMINI_API_KEY`
 
@@ -138,16 +138,16 @@ actionLogs: {
 
 ## Security
 
-- Tokens encrypted with AES‑256‑GCM and stored in Firestore.
-- Cookies (`__session`, `mb`) are httpOnly, sameSite=lax, secure on HTTPS.
+- Tokens encrypted with AES‑256‑GCM and stored in Supabase Postgres.
+- Cookies (`mb` and Supabase auth cookies) are httpOnly, sameSite=lax, secure on HTTPS.
 - Secrets are never logged.
 - Data minimization: store headers by default; selective content only when classification requires it.
 - Server-side access controls enforced on sensitive collections and APIs.
 
 ## Deployment
 
-- Firebase Hosting with frameworks backend (`firebase.json`), region `us-central1`.
-- Scheduled Functions in `src/functions/index.ts` for Gmail History and Outlook Delta.
+- Deploy to your chosen platform (Vercel, Cloudflare, etc.).
+- Background sync can be scheduled externally or via platform cron.
 - Ensure production env vars and OAuth apps are configured and verified.
 - Observability: structured logs; sync uses retry/backoff for rate limits; cursors recovered on invalidation.
 

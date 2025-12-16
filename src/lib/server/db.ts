@@ -1,10 +1,10 @@
-import { firestore } from '@/lib/server/firebase-admin';
+import { getServerSupabase } from '@/lib/server/supabase';
 
 export type Provider = 'gmail' | 'outlook';
 
 export type Mailbox = {
   id: string; // doc id
-  userId: string; // Firebase Auth UID
+  userId: string; // Supabase Auth UID
   provider: Provider;
   email: string;
   tokenBlobEncrypted: string; // encrypted tokens
@@ -41,25 +41,28 @@ export type Inventory = {
   status: 'active' | 'moved' | 'ignored';
 };
 
-export const mailboxesCol = () => firestore.collection('mailboxes');
-export const messagesCol = () => firestore.collection('messages');
-export const inventoryCol = () => firestore.collection('inventory');
-export const emailIdentitiesCol = () => firestore.collection('emailIdentities');
-export const accountsCol = () => firestore.collection('accounts');
-export const accountEvidenceCol = () => firestore.collection('accountEvidence');
-export const tasksCol = () => firestore.collection('tasks');
-export const actionLogsCol = () => firestore.collection('actionLogs');
-export const serviceAliasesCol = () => firestore.collection('serviceAliases');
+export const mailboxesTable = async () => (await getServerSupabase()).from('mailboxes');
+export const messagesTable = async () => (await getServerSupabase()).from('messages');
+export const inventoryTable = async () => (await getServerSupabase()).from('inventory');
+export const emailIdentitiesTable = async () => (await getServerSupabase()).from('emailIdentities');
+export const accountsTable = async () => (await getServerSupabase()).from('accounts');
+export const accountEvidenceTable = async () => (await getServerSupabase()).from('accountEvidence');
+export const tasksTable = async () => (await getServerSupabase()).from('tasks');
+export const actionLogsTable = async () => (await getServerSupabase()).from('actionLogs');
+export const serviceAliasesTable = async () => (await getServerSupabase()).from('serviceAliases');
 
 export async function upsertMailbox(mb: Omit<Mailbox, 'id'> & { id?: string }): Promise<Mailbox> {
   const id = mb.id || (mb.provider + ':' + mb.email.toLowerCase());
-  const ref = mailboxesCol().doc(id);
-  await ref.set({ ...mb, id }, { merge: true });
+  const { error } = await (await mailboxesTable())
+    .upsert({ ...mb, id })
+    .eq('id', id);
+  if (error) throw error;
   return { ...mb, id } as Mailbox;
 }
 
 export async function updateInventoryStatus(id: string, status: Inventory['status']) {
-  await inventoryCol().doc(id).set({ id, status }, { merge: true });
+  const { error } = await (await inventoryTable()).update({ status }).eq('id', id);
+  if (error) throw error;
 }
 
 export async function listInventory(filters?: {
@@ -69,21 +72,24 @@ export async function listInventory(filters?: {
   hasUnsub?: boolean;
   lastSeenAfter?: number;
 }) {
-  let q: FirebaseFirestore.Query = inventoryCol();
+  const supabase = await getServerSupabase();
+  let query = supabase.from('inventory').select('*');
   if (filters?.userId) {
-    const userMailboxes = await mailboxesCol().where('userId', '==', filters.userId).get();
-    const mailboxIds = userMailboxes.docs.map(doc => doc.id);
-    if (mailboxIds.length > 0) {
-      q = q.where('mailboxId', 'in', mailboxIds);
-    } else {
-      return []; // User has no mailboxes, so no inventory
-    }
+    // Filter inventory by user's mailbox IDs
+    const { data: mbs, error } = await supabase
+      .from('mailboxes')
+      .select('id')
+      .eq('userId', filters.userId);
+    if (error) throw error;
+    const mailboxIds = (mbs ?? []).map(m => m.id);
+    if (mailboxIds.length === 0) return [];
+    query = query.in('mailboxId', mailboxIds);
   }
-  if (filters?.hasUnsub !== undefined) q = q.where('hasUnsub', '==', filters.hasUnsub);
-  if (filters?.lastSeenAfter) q = q.where('lastSeen', '>=' , filters.lastSeenAfter);
-  // provider/category filters would require joins; skip for now or denormalize later
-  const snap = await q.orderBy('lastSeen', 'desc').limit(500).get();
-  return snap.docs.map(d => d.data() as Inventory);
+  if (filters?.hasUnsub !== undefined) query = query.eq('hasUnsub', filters.hasUnsub);
+  if (filters?.lastSeenAfter) query = query.gte('lastSeen', filters.lastSeenAfter);
+  const { data, error } = await query.order('lastSeen', { ascending: false }).limit(500);
+  if (error) throw error;
+  return (data ?? []) as Inventory[];
 }
 
 export type EmailIdentity = {
@@ -149,7 +155,6 @@ export type ActionLog = {
 
 export async function upsertEmailIdentity(input: Omit<EmailIdentity, 'id'|'createdAt'> & { id?: string }) {
   const id = input.id || (`${input.provider}:${input.email.toLowerCase()}`);
-  const ref = emailIdentitiesCol().doc(id);
   const doc = {
     id,
     userId: input.userId,
@@ -159,6 +164,7 @@ export async function upsertEmailIdentity(input: Omit<EmailIdentity, 'id'|'creat
     verifiedAt: input.verifiedAt,
     createdAt: Date.now(),
   };
-  await ref.set(doc, { merge: true });
+  const { error } = await (await emailIdentitiesTable()).upsert(doc).eq('id', id);
+  if (error) throw error;
   return doc as EmailIdentity;
 }

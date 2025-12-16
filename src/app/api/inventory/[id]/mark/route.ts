@@ -1,18 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateInventoryStatus, inventoryCol, mailboxesCol, type Inventory, type Mailbox } from '@/lib/server/db';
-import { getAuth } from 'firebase-admin/auth';
-import { firebaseAdminApp } from '@/lib/server/firebase-admin';
-
-async function getUserId(req: NextRequest) {
-  const cookie = req.cookies.get('__session')?.value;
-  if (!cookie) return null;
-  try {
-    const decoded = await getAuth(firebaseAdminApp).verifySessionCookie(cookie, true);
-    return decoded.uid;
-  } catch {
-    return null;
-  }
-}
+import { updateInventoryStatus, inventoryTable, mailboxesTable, type Inventory, type Mailbox } from '@/lib/server/db';
+import { getUserId } from '@/lib/server/auth';
 
 export async function POST(req: NextRequest, context: unknown) {
   try {
@@ -23,11 +11,12 @@ export async function POST(req: NextRequest, context: unknown) {
     if (!['active', 'moved', 'ignored'].includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     }
-    const invRef = await inventoryCol().doc(params.id).get();
-    if (!invRef.exists) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const inv = invRef.data() as Inventory;
-    const mbRef = await mailboxesCol().doc(inv.mailboxId).get();
-    if (!mbRef.exists || (mbRef.data() as Mailbox).userId !== userId) {
+    const { data: invs } = await inventoryTable().select('*').eq('id', params.id).limit(1);
+    const inv = (invs && invs[0]) as Inventory | undefined;
+    if (!inv) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const { data: mbs } = await mailboxesTable().select('*').eq('id', inv.mailboxId).limit(1);
+    const mb = (mbs && mbs[0]) as Mailbox | undefined;
+    if (!mb || mb.userId !== userId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     await updateInventoryStatus(params.id, status);
