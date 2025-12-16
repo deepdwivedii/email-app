@@ -1,0 +1,86 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { ConfidentialClientApplication } from '@azure/msal-node';
+import { encryptJson } from '@/lib/server/crypto';
+import { upsertMailbox, upsertEmailIdentity } from '@/lib/server/db';
+import { getUserId } from '@/lib/server/auth';
+
+export async function GET(req: NextRequest) {
+  try {
+    const origin = req.nextUrl.origin;
+     const userId = await getUserId(req);
+    if (!userId) {
+      return NextResponse.redirect(`${origin}/login?error=unauthorized`);
+    }
+
+    const redirectUri = `${origin}/api/oauth/microsoft/callback`;
+    const clientId = process.env.MS_OAUTH_CLIENT_ID as string;
+    const clientSecret = process.env.MS_OAUTH_CLIENT_SECRET as string;
+    const code = req.nextUrl.searchParams.get('code') as string;
+    if (!clientId || !clientSecret || !code) {
+      return NextResponse.redirect(`${origin}/dashboard?error=oauth_missing_params`);
+    }
+
+    const pca = new ConfidentialClientApplication({
+      auth: {
+        clientId,
+        authority: 'https://login.microsoftonline.com/common',
+        clientSecret,
+      },
+    });
+
+    const tokenResponse = await pca.acquireTokenByCode({
+      code,
+      redirectUri,
+      scopes: ['https://graph.microsoft.com/Mail.Read', 'offline_access'],
+    });
+
+    if (!tokenResponse?.accessToken) throw new Error('Token exchange failed');
+
+    console.log('[Outlook Callback] Token exchanged. Fetching profile...');
+
+    const meRes = await fetch('https://graph.microsoft.com/v1.0/me', {
+      headers: { Authorization: `Bearer ${tokenResponse.accessToken}` },
+    });
+    if (!meRes.ok) throw new Error('Failed to fetch Microsoft profile');
+    const me = await meRes.json();
+    const email = (me.mail || me.userPrincipalName) as string;
+    console.log('[Outlook Callback] Profile fetched for:', email);
+
+    const tokenBlobEncrypted = encryptJson({
+      accessToken: tokenResponse.accessToken,
+      refreshToken: (tokenResponse as unknown as { refreshToken?: string }).refreshToken,
+      expiresOn: tokenResponse.expiresOn?.toISOString?.() ?? null,
+    });
+
+    const saved = await upsertMailbox({
+      userId,
+      provider: 'outlook',
+      email,
+      tokenBlobEncrypted,
+      connectedAt: Date.now(),
+      lastSyncAt: undefined,
+    });
+    console.log('[Outlook Callback] Mailbox saved:', saved.id);
+    await upsertEmailIdentity({
+      userId,
+      email,
+      provider: 'outlook',
+      mailboxId: saved.id,
+      verifiedAt: Date.now(),
+    });
+
+    const resp = NextResponse.redirect(`${origin}/dashboard?connected=outlook`);
+    const secure = origin.startsWith('https://');
+    resp.cookies.set('mb', saved.id, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure,
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+    return resp;
+  } catch (e) {
+    console.error('[Outlook Callback] Error:', e);
+    return NextResponse.redirect(`${req.nextUrl.origin}/dashboard?error=oauth_error`);
+  }
+}
