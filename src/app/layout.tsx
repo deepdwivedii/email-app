@@ -7,6 +7,7 @@ import { AppLogo } from "@/components/icons";
 import { AuthProvider } from "@/hooks/use-auth";
 import AuthButton from "@/components/auth-button";
 import MainNav from "@/components/main-nav";
+import { MobileNav } from "@/components/mobile-nav";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const spaceGrotesk = Space_Grotesk({
@@ -42,7 +43,8 @@ export default function RootLayout({
               </div>
             </div>
           </header>
-          <main>{children}</main>
+          <main className="pb-16 md:pb-0">{children}</main>
+          <MobileNav />
           <Toaster />
         </AuthProvider>
       </body>

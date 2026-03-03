@@ -9,15 +9,26 @@ export async function GET(req: NextRequest) {
     const origin = req.nextUrl.origin;
     const userId = await getUserId(req);
     if (!userId) {
-      return NextResponse.redirect(`${origin}/login?error=unauthorized`);
+      return NextResponse.redirect(`${origin}/auth?tab=signin&error=unauthorized`);
     }
 
     const redirectUri = `${origin}/api/oauth/google/callback`;
     const clientId = process.env.GMAIL_OAUTH_CLIENT_ID as string;
     const clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET as string;
     const code = req.nextUrl.searchParams.get('code');
+    const stateParam = req.nextUrl.searchParams.get('state');
+    let alias: string | undefined;
+    if (stateParam) {
+      try {
+        const json = Buffer.from(stateParam, 'base64url').toString('utf8');
+        const parsed = JSON.parse(json) as { alias?: string };
+        alias = parsed.alias?.trim() || undefined;
+      } catch {
+        alias = undefined;
+      }
+    }
     if (!clientId || !clientSecret || !code) {
-      return NextResponse.redirect(`${origin}/dashboard?error=oauth_missing_params`);
+      return NextResponse.redirect(`${origin}/overview?error=oauth_missing_params`);
     }
     let errCode = 'token_exchange';
     const client = new OAuth2Client({ clientId, clientSecret, redirectUri });
@@ -43,6 +54,7 @@ export async function GET(req: NextRequest) {
       cursor: historyId,
       connectedAt: Date.now(),
       lastSyncAt: undefined,
+      displayName: alias,
     });
     errCode = 'upsert_identity';
     await upsertEmailIdentity({
@@ -54,7 +66,7 @@ export async function GET(req: NextRequest) {
     });
 
     errCode = 'set_cookie_redirect';
-    const resp = NextResponse.redirect(`${origin}/dashboard?connected=gmail`);
+    const resp = NextResponse.redirect(`${origin}/overview?connected=gmail`);
     const secure = origin.startsWith('https://');
     // Set mailbox ID cookie to scope sync operations
     resp.cookies.set('mb', saved.id, {
@@ -73,6 +85,6 @@ export async function GET(req: NextRequest) {
     console.error('Google OAuth callback error', { msg, pgCode, details });
     const coarse = msg.includes('profile') ? 'profile_fetch' : 'token_or_upsert_error';
     const codeParam = encodeURIComponent(pgCode ? `supabase_${pgCode}` : coarse);
-    return NextResponse.redirect(`${req.nextUrl.origin}/dashboard?error=oauth_error&code=${codeParam}`);
+    return NextResponse.redirect(`${req.nextUrl.origin}/overview?error=oauth_error&code=${codeParam}`);
   }
 }

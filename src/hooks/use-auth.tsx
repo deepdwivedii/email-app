@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
 
 interface AuthContextType {
@@ -47,12 +47,14 @@ export const useAuth = () => useContext(AuthContext);
 export const useRequireAuth = () => {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      const from = pathname || '/';
+      router.push(`/auth?from=${encodeURIComponent(from)}`);
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, pathname]);
 
   return { user, loading };
 };

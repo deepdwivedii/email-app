@@ -41,36 +41,36 @@ export default function MainNav() {
             <nav className="mt-6 flex flex-col gap-2 text-sm font-medium text-muted-foreground">
               <SheetClose asChild>
                 <Link
-                  href="/dashboard"
+                  href="/overview"
                   prefetch={false}
-                  className="rounded-full px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
+                  className="rounded-md px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
                 >
-                  Dashboard
+                  Overview
+                </Link>
+              </SheetClose>
+              <SheetClose asChild>
+                <Link
+                  href="/subscriptions"
+                  prefetch={false}
+                  className="rounded-md px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
+                >
+                  Subscriptions
                 </Link>
               </SheetClose>
               <SheetClose asChild>
                 <Link
                   href="/accounts"
                   prefetch={false}
-                  className="rounded-full px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
+                  className="rounded-md px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
                 >
                   Accounts
                 </Link>
               </SheetClose>
               <SheetClose asChild>
                 <Link
-                  href="/mailboxes"
-                  prefetch={false}
-                  className="rounded-full px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
-                >
-                  Mailboxes
-                </Link>
-              </SheetClose>
-              <SheetClose asChild>
-                <Link
                   href="/tasks"
                   prefetch={false}
-                  className="rounded-full px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
+                  className="rounded-md px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
                 >
                   Tasks
                 </Link>
@@ -79,7 +79,7 @@ export default function MainNav() {
                 <Link
                   href="/settings"
                   prefetch={false}
-                  className="rounded-full px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
+                  className="rounded-md px-3 py-2 transition-colors hover:bg-accent/20 hover:text-foreground"
                 >
                   Settings
                 </Link>
@@ -90,37 +90,37 @@ export default function MainNav() {
       </div>
       <nav className="hidden items-center gap-3 text-xs font-medium text-muted-foreground md:flex md:gap-4 md:text-sm">
         <Link
-          href="/dashboard"
+          href="/overview"
           prefetch={false}
-          className="rounded-full px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
+          className="rounded-md px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
         >
-          Dashboard
+          Overview
+        </Link>
+        <Link
+          href="/subscriptions"
+          prefetch={false}
+          className="rounded-md px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
+        >
+          Subscriptions
         </Link>
         <Link
           href="/accounts"
           prefetch={false}
-          className="rounded-full px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
+          className="rounded-md px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
         >
           Accounts
         </Link>
         <Link
-          href="/mailboxes"
-          prefetch={false}
-          className="rounded-full px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
-        >
-          Mailboxes
-        </Link>
-        <Link
           href="/tasks"
           prefetch={false}
-          className="rounded-full px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
+          className="rounded-md px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
         >
           Tasks
         </Link>
         <Link
           href="/settings"
           prefetch={false}
-          className="rounded-full px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
+          className="rounded-md px-3 py-1 transition-colors hover:bg-accent/20 hover:text-foreground"
         >
           Settings
         </Link>

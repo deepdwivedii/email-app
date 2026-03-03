@@ -1,9 +1,23 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, ShieldCheck, Sparkles } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function Page() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/overview");
+    }
+  }, [loading, user, router]);
+
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-b from-background via-background/60 to-background">
       <div className="pointer-events-none absolute inset-x-0 top-[-10rem] -z-10 flex justify-center">
@@ -20,7 +34,7 @@ export default function Page() {
                 <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-tr from-primary via-emerald-400 to-fuchsia-500 text-[0.7rem] text-primary-foreground shadow-sm">
                   <Sparkles className="h-3 w-3" />
                 </span>
-                <span>Your digital accounts, carried in one place.</span>
+                <span>Find subscriptions and accounts across your inboxes.</span>
               </div>
               <div className="space-y-4">
                 <h1 className="font-headline text-4xl font-semibold tracking-tight sm:text-5xl md:text-6xl">
@@ -31,8 +45,8 @@ export default function Page() {
                   .
                 </h1>
                 <p className="text-base text-muted-foreground sm:text-lg md:text-xl">
-                  Let Atlas auto-detect subscriptions, clean up your inbox, and
-                  keep the stuff you actually vibe with.
+                  Connect your inbox, scan recent mail, and see every subscription
+                  and account in one place.
                 </p>
               </div>
               <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-center sm:justify-start">
@@ -41,7 +55,7 @@ export default function Page() {
                   asChild
                   className="w-full sm:w-auto bg-gradient-to-r from-primary via-emerald-400 to-fuchsia-500 text-primary-foreground shadow-lg shadow-primary/40 transition-transform hover:scale-[1.02] hover:shadow-primary/60"
                 >
-                  <Link href="/signup">
+                  <Link href="/auth?tab=signup">
                     Get started free
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
@@ -52,12 +66,16 @@ export default function Page() {
                   asChild
                   className="w-full sm:w-auto border-border/60 bg-background/80 text-foreground/90 backdrop-blur hover:bg-background"
                 >
-                  <Link href="/login">Peek the dashboard</Link>
+                  <Link href="/auth?tab=signin">Sign in</Link>
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                No credit card. Just connect your inbox and reclaim your energy.
-              </p>
+              <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:text-sm">
+                <p>No credit card. Just connect your inbox and reclaim your energy.</p>
+                <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-1 text-[0.7rem] sm:text-xs">
+                  <ShieldCheck className="h-3 w-3 sm:h-4 sm:w-4 text-emerald-500" />
+                  <span>Default: header-only indexing. You control what we store.</span>
+                </div>
+              </div>
             </div>
 
             <div className="w-full max-w-md shrink-0 md:max-w-lg">
@@ -104,6 +122,61 @@ export default function Page() {
                   <p className="text-xs text-muted-foreground">
                     Atlas reads your email headers to spot patterns, surface the
                     noise, and let you batch-clean in minutes.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </section>
+
+        <section className="border-t border-border/60 bg-background/80">
+          <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 md:flex-row md:items-start md:justify-between md:py-14">
+            <div className="max-w-sm space-y-2">
+              <h2 className="font-headline text-xl font-semibold md:text-2xl">
+                How it works
+              </h2>
+              <p className="text-sm text-muted-foreground md:text-base">
+                A simple flow: connect → scan → review → act.
+              </p>
+            </div>
+            <div className="grid w-full gap-4 sm:grid-cols-2 md:grid-cols-4">
+              <Card className="border-border/60 bg-background/90">
+                <CardContent className="space-y-1 p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    1. Connect inbox
+                  </p>
+                  <p className="text-sm text-foreground">
+                    Link Gmail or Outlook with read-only metadata access.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="border-border/60 bg-background/90">
+                <CardContent className="space-y-1 p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    2. Scan
+                  </p>
+                  <p className="text-sm text-foreground">
+                    Choose Quick (recent mail) or Full (all mail, runs in background).
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="border-border/60 bg-background/90">
+                <CardContent className="space-y-1 p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    3. Review
+                  </p>
+                  <p className="text-sm text-foreground">
+                    See subscriptions and accounts grouped by domain and service.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="border-border/60 bg-background/90">
+                <CardContent className="space-y-1 p-4">
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    4. Act
+                  </p>
+                  <p className="text-sm text-foreground">
+                    Unsubscribe safely or create follow-up tasks in a few clicks.
                   </p>
                 </CardContent>
               </Card>
@@ -172,8 +245,16 @@ export default function Page() {
               Privacy
             </Link>
             {" · "}
-            <Link href="/settings" className="underline">
-              Settings
+            <Link href="/security" className="underline">
+              Security
+            </Link>
+            {" · "}
+            <Link href="/terms" className="underline">
+              Terms
+            </Link>
+            {" · "}
+            <Link href="/support" className="underline">
+              Support
             </Link>
           </div>
       </footer>

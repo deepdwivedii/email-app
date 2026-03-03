@@ -17,10 +17,21 @@ export async function GET(req: NextRequest) {
     },
   });
   const scopes = ['https://graph.microsoft.com/Mail.Read', 'offline_access', 'openid', 'email', 'profile'];
+  const alias = req.nextUrl.searchParams.get('alias') || '';
+  let state: string | undefined;
+  if (alias) {
+    try {
+      const payload = JSON.stringify({ alias });
+      state = Buffer.from(payload, 'utf8').toString('base64url');
+    } catch {
+      state = undefined;
+    }
+  }
   const url = await pca.getAuthCodeUrl({
     scopes,
     redirectUri,
     prompt: 'consent',
+    state,
   });
   return NextResponse.redirect(url, { status: 302 });
 }

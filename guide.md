@@ -5,7 +5,7 @@ This app needs four main “auth-ish” pieces:
 
 - Google OAuth (Gmail)
 - Microsoft OAuth (Outlook / Microsoft 365)
-- Firebase (client + Admin)
+- Supabase (authentication + Postgres database)
 - Encryption + AI keys
 
 The sections below walk you through getting each one and wiring it into this repo.
@@ -98,7 +98,6 @@ The app reads them in:
 - `src/app/api/oauth/google/start/route.ts:13–14`
 - `src/app/api/oauth/google/callback/route.ts:28–29`
 - `src/app/api/sync/route.ts:110–111`
-- `src/functions/index.ts:84–85`
 
 ---
 
@@ -209,7 +208,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...
 ```
 
-The client is initialized in `src/lib/supabase-client.ts`, and sessions are managed using `@supabase/auth-helpers-nextjs` via cookies on route handlers.
+The client is initialized in `src/lib/supabase-client.ts`, and sessions are managed on the server using `@supabase/ssr` with Next.js `cookies()` in route handlers (`src/lib/server/supabase.ts`).
 
 ### 3.3 Database schema (Postgres)
 
@@ -267,31 +266,29 @@ ENCRYPTION_KEY_32B=<that-hex-string>
 ENCRYPTION_KEY_32B=9e6d1c9e8d7c8b6a3d1f9a8d7c8b6a3d  # example, replace
 ```
 
-- Production: set the same key in your Firebase environment.
+- Production: set the same key in your hosting environment (for example Firebase Hosting, Vercel, or App Hosting).
   - This key must not change between deployments; changing it would break decryption of existing token blobs.
 
 ---
 
-## 5. AI / Gemini (`GEMINI_API_KEY`)
+## 5. AI / OpenRouter (`OPENROUTER_API_KEY`)
 
-The AI suggestion flow uses Genkit with Gemini (`src/ai/flows/suggest-unsubscribe-domain.ts` and `src/ai/genkit.ts`).
+The AI suggestion flow uses Genkit with an OpenRouter-hosted model (`src/ai/flows/suggest-unsubscribe-domain.ts` and `src/ai/genkit.ts`).
 
-### 5.1 Get a Gemini API key
+### 5.1 Get an OpenRouter API key
 
-1. Go to https://aistudio.google.com/ or the Gemini section of Google Cloud.
-2. Create / select a project, enable the **Gemini API** or **Generative Language** API.
-3. Generate an API key from the console.
+1. Go to https://openrouter.ai/ and create an account.
+2. Generate an API key from the OpenRouter dashboard.
 
 ### 5.2 Configure in this repo
 
 - Local `.env.local`:
 
 ```bash
-GEMINI_API_KEY=your_gemini_key_here
+OPENROUTER_API_KEY=your_openrouter_key_here
 ```
 
-- Production: set in Firebase environment as `GEMINI_API_KEY`.
-- Production: set in your hosting environment as `GEMINI_API_KEY`.
+- Production: set `OPENROUTER_API_KEY` in your hosting environment (for example Vercel or your Node hosting platform).
 
 ---
 
@@ -305,7 +302,7 @@ NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 
 # AI
-GEMINI_API_KEY=...
+OPENROUTER_API_KEY=...
 
 # Encryption
 ENCRYPTION_KEY_32B=...   # 32-byte key as hex
@@ -344,7 +341,7 @@ When you’re ready to deploy for real:
 - [ ] Supabase project created; `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` configured.
 - [ ] Supabase Postgres tables created with RLS enforcing per-user access.
 - [ ] `ENCRYPTION_KEY_32B` set identically across local and prod.
-- [ ] Optional: `GEMINI_API_KEY` set.
+- [ ] Optional: `OPENROUTER_API_KEY` set.
 - [ ] `npm run build` succeeds locally.
 - [ ] Deploy to your chosen hosting platform.
 

@@ -7,17 +7,28 @@ import { getUserId } from '@/lib/server/auth';
 export async function GET(req: NextRequest) {
   try {
     const origin = req.nextUrl.origin;
-     const userId = await getUserId(req);
+    const userId = await getUserId(req);
     if (!userId) {
-      return NextResponse.redirect(`${origin}/login?error=unauthorized`);
+      return NextResponse.redirect(`${origin}/auth?tab=signin&error=unauthorized`);
     }
 
     const redirectUri = `${origin}/api/oauth/microsoft/callback`;
     const clientId = process.env.MS_OAUTH_CLIENT_ID as string;
     const clientSecret = process.env.MS_OAUTH_CLIENT_SECRET as string;
     const code = req.nextUrl.searchParams.get('code') as string;
+    const stateParam = req.nextUrl.searchParams.get('state');
+    let alias: string | undefined;
+    if (stateParam) {
+      try {
+        const json = Buffer.from(stateParam, 'base64url').toString('utf8');
+        const parsed = JSON.parse(json) as { alias?: string };
+        alias = parsed.alias?.trim() || undefined;
+      } catch {
+        alias = undefined;
+      }
+    }
     if (!clientId || !clientSecret || !code) {
-      return NextResponse.redirect(`${origin}/dashboard?error=oauth_missing_params`);
+      return NextResponse.redirect(`${origin}/overview?error=oauth_missing_params`);
     }
 
     const pca = new ConfidentialClientApplication({
@@ -59,6 +70,7 @@ export async function GET(req: NextRequest) {
       tokenBlobEncrypted,
       connectedAt: Date.now(),
       lastSyncAt: undefined,
+      displayName: alias,
     });
     console.log('[Outlook Callback] Mailbox saved:', saved.id);
     await upsertEmailIdentity({
@@ -69,7 +81,7 @@ export async function GET(req: NextRequest) {
       verifiedAt: Date.now(),
     });
 
-    const resp = NextResponse.redirect(`${origin}/dashboard?connected=outlook`);
+    const resp = NextResponse.redirect(`${origin}/overview?connected=outlook`);
     const secure = origin.startsWith('https://');
     resp.cookies.set('mb', saved.id, {
       path: '/',
@@ -81,6 +93,6 @@ export async function GET(req: NextRequest) {
     return resp;
   } catch (e) {
     console.error('[Outlook Callback] Error:', e);
-    return NextResponse.redirect(`${req.nextUrl.origin}/dashboard?error=oauth_error`);
+    return NextResponse.redirect(`${req.nextUrl.origin}/overview?error=oauth_error`);
   }
 }

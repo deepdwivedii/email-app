@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const clientIdM = process.env.MS_OAUTH_CLIENT_ID as string | undefined;
   const clientSecretM = process.env.MS_OAUTH_CLIENT_SECRET as string | undefined;
 
-  const enriched: Array<{ id: string; provider: 'gmail'|'outlook'; email: string; connectedAt: number; lastSyncAt?: number; health: 'active'|'error'; statusText?: string; isActive: boolean }> = await Promise.all((mailboxes ?? []).map(async (row: any) => {
+  const enriched: Array<{ id: string; provider: 'gmail'|'outlook'; email: string; displayName?: string; connectedAt: number; lastSyncAt?: number; health: 'active'|'error'; statusText?: string; isActive: boolean }> = await Promise.all((mailboxes ?? []).map(async (row: any) => {
     const mb = {
       id: row.id as string,
       provider: row.provider as 'gmail'|'outlook',
@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
       tokenBlobEncrypted: row.tokenblobencrypted as string,
       connectedAt: Number(row.connectedat) as number,
       lastSyncAt: row.lastsyncat ? Number(row.lastsyncat) : undefined,
+      displayName: row.displayname as string | undefined,
     };
     let health: 'active' | 'error' = 'active';
     let statusText: string | undefined;
@@ -86,7 +87,7 @@ export async function GET(req: NextRequest) {
       health = 'error';
       statusText = (e as Error)?.message || 'Verification failed';
     }
-    return { id: mb.id, provider: mb.provider, email: mb.email, connectedAt: mb.connectedAt, lastSyncAt: mb.lastSyncAt, health, statusText, isActive: activeMailboxId === mb.id };
+    return { id: mb.id, provider: mb.provider, email: mb.email, displayName: mb.displayName, connectedAt: mb.connectedAt, lastSyncAt: mb.lastSyncAt, health, statusText, isActive: activeMailboxId === mb.id };
   }));
 
   return NextResponse.json({ mailboxes: enriched, identities, activeMailboxId });

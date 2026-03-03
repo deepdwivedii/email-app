@@ -17,4 +17,5 @@ export type DomainInfo = {
   emails: Email[];
   // Optional inventory document id to allow server-side status updates
   inventoryId?: string;
+  mailboxId?: string;
 };

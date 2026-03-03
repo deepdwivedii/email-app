@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mailboxesTable, messagesTable, inventoryTable, accountsTable, accountEvidenceTable, tasksTable, actionLogsTable } from '@/lib/server/db';
 import { getUserId } from '@/lib/server/auth';
 
-async function deleteTableByUser(tablePromise: Promise<any>, userId: string, field: string = 'userId') {
+async function deleteTableByUser(tablePromise: Promise<any>, userId: string, field: string = 'userid') {
   const table = await tablePromise;
   await table.delete().eq(field, userId);
 }
@@ -10,12 +10,11 @@ async function deleteTableByUser(tablePromise: Promise<any>, userId: string, fie
 export async function POST(req: NextRequest) {
   const userId = await getUserId(req);
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  // collect mailbox ids first to delete messages/inventory
-  const { data: mbs } = await (await mailboxesTable()).select('id').eq('userId', userId);
+  const { data: mbs } = await (await mailboxesTable()).select('id').eq('userid', userId);
   for (const mb of mbs ?? []) {
     const mailboxId = mb.id as string;
-    await (await messagesTable()).delete().eq('mailboxId', mailboxId);
-    await (await inventoryTable()).delete().eq('mailboxId', mailboxId);
+    await (await messagesTable()).delete().eq('mailboxid', mailboxId);
+    await (await inventoryTable()).delete().eq('mailboxid', mailboxId);
   }
   await Promise.all([
     deleteTableByUser(accountsTable(), userId),

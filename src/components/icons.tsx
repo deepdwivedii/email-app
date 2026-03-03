@@ -1,13 +1,12 @@
 import Image from 'next/image';
 import type { ComponentProps } from 'react';
-import logoPng from '../../logo.png';
 
 type AppLogoProps = Omit<ComponentProps<typeof Image>, 'src' | 'alt'> & {
   alt?: string;
 };
 
 export function AppLogo({ alt = 'Atlas logo', ...props }: AppLogoProps) {
-  return <Image src={logoPng} alt={alt} {...props} />;
+  return <Image src="/logo.png" alt={alt} width={32} height={32} {...props} />;
 }
 
 export function GmailIcon(props: ComponentProps<'svg'>) {

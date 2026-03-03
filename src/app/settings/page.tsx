@@ -1,46 +1,77 @@
 "use client";
 
-import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { useState } from 'react';
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useRequireAuth } from "@/hooks/use-auth";
+import Link from "next/link";
 
 export default function SettingsPage() {
-  const [exportData, setExportData] = useState<any | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { user, loading } = useRequireAuth();
 
-  const handleExport = async () => {
-    setBusy(true);
-    const res = await fetch('/api/account/export', { method: 'POST' });
-    const j = await res.json();
-    setExportData(j);
-    setBusy(false);
-  };
-
-  const handleDelete = async () => {
-    setBusy(true);
-    const res = await fetch('/api/account/delete', { method: 'POST' });
-    setBusy(false);
-    alert(res.ok ? 'Data delete requested.' : 'Delete failed.');
-  };
+  if (loading || !user) {
+    return null;
+  }
 
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-8">
+    <div className="container mx-auto max-w-4xl px-4 py-8">
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle className="font-headline">Privacy Controls</CardTitle>
-          <CardDescription>Export or delete your account data.</CardDescription>
+          <CardTitle className="font-headline">Settings</CardTitle>
+          <CardDescription>
+            Manage connections, privacy, data export, and advanced tools.
+          </CardDescription>
         </CardHeader>
       </Card>
 
-      <div className="flex gap-3 mb-4">
-        <Button onClick={handleExport} disabled={busy}>Export Data</Button>
-        <Button variant="destructive" onClick={handleDelete} disabled={busy}>Delete My Data</Button>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline text-base">
+              <Link href="/settings/connections" className="hover:underline">
+                Connections
+              </Link>
+            </CardTitle>
+            <CardDescription>
+              View connected inboxes, set the active mailbox, and control sync.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline text-base">
+              <Link href="/settings/privacy" className="hover:underline">
+                Privacy
+              </Link>
+            </CardTitle>
+            <CardDescription>
+              Learn how Atlas handles headers-only indexing and scopes.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline text-base">
+              <Link href="/settings/data" className="hover:underline">
+                Data
+              </Link>
+            </CardTitle>
+            <CardDescription>
+              Export a copy of your data or request deletion.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline text-base">
+              <Link href="/settings/advanced" className="hover:underline">
+                Advanced
+              </Link>
+            </CardTitle>
+            <CardDescription>
+              Access raw messages and diagnostics for troubleshooting.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
-
-      {exportData && (
-        <pre className="rounded-md border p-4 text-xs overflow-auto">{JSON.stringify(exportData, null, 2)}</pre>
-      )}
     </div>
   );
 }
-

@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRequireAuth } from "@/hooks/use-auth";
+import Link from "next/link";
+import { EmptyState } from "@/components/empty-state";
+import { ListChecks } from "lucide-react";
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -64,6 +67,7 @@ export default function TasksPage() {
     in_progress: tasks.filter((t: any) => t.status === "in_progress"),
     done: tasks.filter((t: any) => t.status === "done"),
   };
+  const totalTasks = tasks.length;
 
   if (loading || !user) {
     return null;
@@ -114,8 +118,18 @@ export default function TasksPage() {
           </div>
         </CardContent>
       </Card>
-
-      {["open", "in_progress", "done"].map((status) => (
+      {totalTasks === 0 && (
+        <EmptyState
+          icon={<ListChecks className="h-6 w-6" />}
+          title="No tasks yet"
+          description="Create a follow-up here, or run a sync from Overview to discover new accounts to act on."
+          actionLabel="Go to Overview and Sync"
+          onAction={() => {
+            window.location.href = "/overview";
+          }}
+        />
+      )}
+      {totalTasks > 0 && ["open", "in_progress", "done"].map((status) => (
         <Card key={status} className="mb-6">
           <CardHeader>
             <CardTitle className="font-headline capitalize">
@@ -167,7 +181,17 @@ export default function TasksPage() {
               )}
               {!grouped[status as keyof typeof grouped].length && (
                 <div className="rounded-lg border border-dashed border-border/60 bg-card px-4 py-6 text-center text-sm text-muted-foreground">
-                  No tasks
+                  <p>No tasks</p>
+                  {status === "open" && (
+                    <>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Create a follow-up here, or run a sync from Overview to discover new accounts.
+                      </p>
+                      <Button asChild size="sm" className="mt-3">
+                        <Link href="/overview">Go to Overview and Sync</Link>
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -229,7 +253,19 @@ export default function TasksPage() {
                           colSpan={4}
                           className="text-sm text-muted-foreground"
                         >
-                          No tasks
+                          <div className="flex flex-col items-start gap-2">
+                            <span>No tasks</span>
+                            {status === "open" && (
+                              <>
+                                <span className="text-xs text-muted-foreground">
+                                  Create a task above, or run a sync from Overview to discover accounts to act on.
+                                </span>
+                                <Button asChild size="sm">
+                                  <Link href="/overview">Go to Overview and Sync</Link>
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     )}

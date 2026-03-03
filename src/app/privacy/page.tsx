@@ -6,7 +6,7 @@ export default function PrivacyPage() {
       <ul className="list-disc pl-6 space-y-2 mb-6">
         <li>Gmail scopes: gmail.metadata (preferred) or gmail.readonly for header indexing.</li>
         <li>Microsoft Graph scope: Mail.Read for header indexing.</li>
-        <li>Tokens are encrypted at rest using AES-256-GCM and stored in Firestore.</li>
+        <li>Tokens are encrypted at rest using AES-256-GCM and stored in Supabase Postgres.</li>
         <li>You can disconnect your mailbox at any time.</li>
         <li>We respect RFC 8058 one-click unsubscribe where provided by senders.</li>
       </ul>

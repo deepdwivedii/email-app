@@ -51,39 +51,6 @@ export default function AccountDetailPage({ params }: any) {
 
       <Card className="mb-4">
         <CardHeader>
-          <CardTitle className="font-headline">Why this account</CardTitle>
-          <CardDescription>{account.explanation}</CardDescription>
-        </CardHeader>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-headline">Evidence</CardTitle>
-          <CardDescription>Signals used to infer this account.</CardDescription>
-        </CardHeader>
-        <div className="px-6 pb-6">
-          <div className="space-y-3">
-            {evidence.map((e: any) => (
-              <div key={e.id} className="flex items-center justify-between rounded-md border p-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="rounded-full bg-muted px-2 py-1 text-xs capitalize">{e.evidenceType}</span>
-                  <span className="break-all text-sm">{e.excerpt || ''}</span>
-                </div>
-                <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
-                  <span>{e.weight}</span>
-                  <span>{new Date(e.createdAt).toLocaleString()}</span>
-                </div>
-              </div>
-            ))}
-            {!evidence.length && (
-              <div className="text-sm text-muted-foreground">No evidence recorded yet.</div>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      <Card className="mt-6">
-        <CardHeader>
           <CardTitle className="font-headline">Actions</CardTitle>
           <CardDescription>Quick actions and tasks for this account.</CardDescription>
         </CardHeader>
@@ -151,6 +118,37 @@ export default function AccountDetailPage({ params }: any) {
             onChange={(e) => setTaskTitle(e.target.value)}
             className="max-w-xs"
           />
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-headline">Why we inferred this account</CardTitle>
+          <CardDescription>{account.explanation}</CardDescription>
+        </CardHeader>
+        <div className="px-6 pb-6">
+          <details className="space-y-3 text-sm">
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
+              View evidence
+            </summary>
+            <div className="mt-3 space-y-3">
+              {evidence.map((e: any) => (
+                <div key={e.id} className="flex items-center justify-between rounded-md border p-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="rounded-full bg-muted px-2 py-1 text-xs capitalize">{e.evidenceType}</span>
+                    <span className="break-all text-sm">{e.excerpt || ''}</span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                    <span>{e.weight}</span>
+                    <span>{new Date(e.createdAt).toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+              {!evidence.length && (
+                <div className="text-sm text-muted-foreground">No evidence recorded yet.</div>
+              )}
+            </div>
+          </details>
         </div>
       </Card>
 

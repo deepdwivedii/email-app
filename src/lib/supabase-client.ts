@@ -7,6 +7,13 @@ const supabaseAnonKey =
   (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string) ||
   (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string);
 
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Supabase env missing', {
+    hasUrl: !!supabaseUrl,
+    hasKey: !!supabaseAnonKey,
+  });
+}
+
 export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,

@@ -11,6 +11,7 @@ export type Mailbox = {
   cursor?: string; // gmail historyId or graph deltaToken
   connectedAt: number;
   lastSyncAt?: number;
+  displayName?: string;
 };
 
 export type Message = {
@@ -41,6 +42,37 @@ export type Inventory = {
   status: 'active' | 'moved' | 'ignored';
 };
 
+export type SyncRunMode = 'quick' | 'full' | 'delta';
+
+export type SyncRunStatus = 'queued' | 'running' | 'paused' | 'done' | 'error' | 'needs_reauth';
+
+export type SyncRunStage = 'listing' | 'fetching' | 'upserting' | 'aggregating';
+
+export type SyncRun = {
+  id: string;
+  userId: string;
+  mailboxId: string;
+  mode: SyncRunMode;
+  status: SyncRunStatus;
+  startedAt: number;
+  finishedAt?: number;
+  stage: SyncRunStage;
+  importedCount: number;
+  domainCount: number;
+  accountEvidenceCount: number;
+  error?: string;
+  cursorSnapshot?: unknown;
+};
+
+export type MailboxCursor = {
+  mailboxId: string;
+  userId: string;
+  provider: Provider;
+  backfill: unknown | null;
+  delta: unknown | null;
+  updatedAt: number;
+};
+
 export const mailboxesTable = async () => (await getServerSupabase()).from('mailboxes');
 export const messagesTable = async () => (await getServerSupabase()).from('messages');
 export const inventoryTable = async () => (await getServerSupabase()).from('inventory');
@@ -50,6 +82,8 @@ export const accountEvidenceTable = async () => (await getServerSupabase()).from
 export const tasksTable = async () => (await getServerSupabase()).from('tasks');
 export const actionLogsTable = async () => (await getServerSupabase()).from('actionLogs');
 export const serviceAliasesTable = async () => (await getServerSupabase()).from('serviceAliases');
+export const syncRunsTable = async () => (await getServerSupabase()).from('sync_runs');
+export const mailboxCursorsTable = async () => (await getServerSupabase()).from('mailbox_cursors');
 
 export async function upsertMailbox(mb: Omit<Mailbox, 'id'> & { id?: string }): Promise<Mailbox> {
   const id = mb.id || (mb.provider + ':' + mb.email.toLowerCase());
@@ -62,6 +96,7 @@ export async function upsertMailbox(mb: Omit<Mailbox, 'id'> & { id?: string }): 
     cursor: mb.cursor,
     connectedat: mb.connectedAt,
     lastsyncat: mb.lastSyncAt,
+    displayname: mb.displayName,
   } as any;
   const { error } = await (await mailboxesTable()).upsert(dbDoc, { onConflict: 'id' });
   if (error) throw error;

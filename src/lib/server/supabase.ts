@@ -10,13 +10,13 @@ export async function getServerSupabase() {
   const cookieStore = await cookies();
   const client = createServerClient(url, anon, {
     cookies: {
-      get(name) {
+      get(name: string) {
         return cookieStore.get(name)?.value;
       },
-      set(name, value, options) {
+      set(name: string, value: string, options: any) {
         cookieStore.set({ name, value, ...options });
       },
-      remove(name, options) {
+      remove(name: string, options: any) {
         cookieStore.set({ name, value: '', ...options });
       },
     },

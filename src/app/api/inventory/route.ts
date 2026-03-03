@@ -63,6 +63,7 @@ export async function GET(req: NextRequest) {
       emails,
       inventoryId: inv.id,
       mailboxId: inv.mailboxId,
+      status: inv.status,
     };
   }));
 

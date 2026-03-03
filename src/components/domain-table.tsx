@@ -29,6 +29,7 @@ import { formatDistanceToNow } from "date-fns";
 import { AppLogo, GmailIcon, OutlookIcon } from "./icons";
 import EmailDetailRow from "./email-detail-row";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/empty-state";
 
 const DomainIcon = ({ domain }: { domain: string }) => {
   if (domain.includes("google") || domain.includes("youtube")) {
@@ -40,7 +41,13 @@ const DomainIcon = ({ domain }: { domain: string }) => {
   return <AppLogo className="h-5 w-5 text-muted-foreground" />;
 };
 
-export default function DomainTable({ domains }: { domains: DomainInfo[] }) {
+export default function DomainTable({
+  domains,
+  aliasMap = {},
+}: {
+  domains: DomainInfo[];
+  aliasMap?: Record<string, string>;
+}) {
   const [openStates, setOpenStates] = React.useState<Record<string, boolean>>(
     {}
   );
@@ -80,16 +87,17 @@ export default function DomainTable({ domains }: { domains: DomainInfo[] }) {
 
   if (!domains.length) {
     return (
-      <Card className="py-12 text-center">
-        <CardHeader>
-          <CardTitle className="font-headline text-2xl">
-            No Subscriptions Found
-          </CardTitle>
-          <CardDescription>
-            Connect your email account to get started.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <EmptyState
+        icon={<MailX className="h-6 w-6" />}
+        title="No subscriptions yet"
+        description="We did not find any subscription senders in your indexed mail."
+        actionLabel="Go to Overview and Sync"
+        onAction={() => {
+          if (typeof window !== "undefined") {
+            window.location.href = "/overview";
+          }
+        }}
+      />
     );
   }
 
@@ -128,6 +136,11 @@ export default function DomainTable({ domains }: { domains: DomainInfo[] }) {
                           }
                         )}
                       </div>
+                      {domainInfo.mailboxId && aliasMap[domainInfo.mailboxId] && (
+                        <div className="text-[10px] text-muted-foreground">
+                          Inbox: {aliasMap[domainInfo.mailboxId]}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <Badge variant="secondary">{domainInfo.category}</Badge>
@@ -236,9 +249,16 @@ export default function DomainTable({ domains }: { domains: DomainInfo[] }) {
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-3">
                             <DomainIcon domain={domainInfo.domain} />
-                            <span className="font-semibold">
-                              {domainInfo.domain}
-                            </span>
+                            <div className="flex flex-col">
+                              <span className="font-semibold">
+                                {domainInfo.domain}
+                              </span>
+                              {domainInfo.mailboxId && aliasMap[domainInfo.mailboxId] && (
+                                <span className="text-[11px] text-muted-foreground">
+                                  Inbox: {aliasMap[domainInfo.mailboxId]}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
@@ -326,7 +346,7 @@ export default function DomainTable({ domains }: { domains: DomainInfo[] }) {
                                 }}
                               >
                                 <ShieldCheck className="mr-2 h-4 w-4" />
-                                <span>Mark as Safe</span>
+                                <span title="Mark as Safe: hide this sender from cleanup suggestions.">Mark as Safe</span>
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>

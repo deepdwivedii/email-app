@@ -1,0 +1,533 @@
+       
+**Overview**
+
+I’ve wired the “Sync Engine v2” architecture from `sync-guide.md` into your existing pipeline, without breaking the current `/api/sync` quick-scan endpoint. The new pieces give you:
+
+- Chunked, resumable full imports per mailbox
+- Separate delta sync for Gmail and Outlook
+- Background worker endpoint suitable for cron
+- Persisted run state + metrics (API calls, quota units, messages imported)
+- Structured error reporting per run
+
+Below is what was implemented, where it lives, and how to validate and compare against your old behavior.
+
+---
+
+**1. Data Model: Sync Runs + Cursors**
+
+New types and table accessors are defined in  
+[db.ts](file:///d:/TRAE/email-app/src/lib/server/db.ts):
+
+- **Types**
+  - `SyncRunMode`, `SyncRunStatus`, `SyncRunStage`
+  - `SyncRun`: mirrors the `sync_runs` table described in `sync-guide.md`
+    - `id`, `userId`, `mailboxId`, `mode`
+    - `status`: `queued | running | paused | done | error | needs_reauth`
+    - `startedAt`, `finishedAt`
+    - `stage`: `listing | fetching | upserting | aggregating`
+    - `importedCount`, `domainCount`, `accountEvidenceCount`
+    - `error?`
+    - `cursorSnapshot?` (used to hold cost/perf metrics)
+  - `MailboxCursor`: mirrors `mailbox_cursors` table
+    - `mailboxId`, `userId`, `provider`
+    - `backfill` JSON (provider-specific cursor)
+    - `delta` JSON
+    - `updatedAt`
+
+- **Accessors**
+  - `syncRunsTable() => from('sync_runs')`
+  - `mailboxCursorsTable() => from('mailbox_cursors')`
+
+These assume you have created the **`sync_runs`** and **`mailbox_cursors`** tables in Supabase exactly as described in `sync-guide.md`. If not, you’ll need to create them before using the new engine.
+
+---
+
+**2. Shared Upsert Logic (Idempotent, Header-Only)**
+
+The message + inventory upsert logic is now centralized in  
+[sync-shared.ts](file:///d:/TRAE/email-app/src/lib/server/sync-shared.ts):
+
+- `upsertMessageAndInventory(mb: Mailbox, msg: { ... })`
+  - Upserts a `messages` row keyed by `id = mailboxId:providerMsgId`
+  - Updates or inserts the corresponding `inventory` row per `rootDomain`
+  - Ensures an `emailIdentities` row exists for the mailbox
+  - Calls the classifier + inference pipeline:
+    - `classifyMessage(...)`
+    - `recordEvidenceAndInfer(...)`
+
+This function is used both by:
+
+- The existing sync endpoint  
+  [/api/sync](file:///d:/TRAE/email-app/src/app/api/sync/route.ts)
+- The new background sync engine  
+  [sync-engine.ts](file:///d:/TRAE/email-app/src/lib/server/sync-engine.ts)
+
+This keeps all sync paths idempotent and ensures all runs feed into the same accounts/inventory logic.
+
+---
+
+**3. Sync Engine Core (Small-Batch Full Import + Delta)**
+
+Core implementation lives in  
+[sync-engine.ts](file:///d:/TRAE/email-app/src/lib/server/sync-engine.ts).
+
+Key data structures (JSON shapes stored in `mailbox_cursors`):
+
+- **Gmail backfill cursor**
+
+  ```ts
+  type GmailBackfillCursor = {
+    type: 'gmail_backfill';
+    q: string;
+    pageToken: string | null;
+    indexInPage: number;
+    done: boolean;
+    lastHistoryId?: string;
+  };
+  ```
+
+- **Gmail delta cursor**
+
+  ```ts
+  type GmailDeltaCursor = {
+    type: 'gmail_history';
+    startHistoryId: string;
+    lastHistoryId: string;
+    lastDeltaAt: string; // ISO
+  };
+  ```
+
+- **Outlook/Graph cursors**
+
+  ```ts
+  type GraphFolderCursor = {
+    nextLink: string | null;
+    deltaLink?: string | null;
+    done: boolean;
+  };
+
+  type GraphBackfillCursor = {
+    type: 'graph_backfill';
+    folders: Record<string, GraphFolderCursor>; // inbox, junk
+  };
+
+  type GraphDeltaCursor = {
+    type: 'graph_delta';
+    folders: Record<string, GraphFolderCursor>;
+  };
+  ```
+
+**Entry points**
+
+- `startSyncRun(userId, mailboxId, mode)`  
+  Creates a new `sync_runs` row in `sync_runs` with status `queued`.  
+  (Used by `/api/sync/start`.)
+
+- `getLatestSyncRun(userId, mailboxId)`  
+  Fetches the most recent run for status polling.  
+  (Used by `/api/sync/status`.)
+
+- `listActiveSyncRuns()`  
+  All runs with status `queued | running`.
+
+- `syncWorkerTick(maxMailboxesPerCycle = 50)`  
+  Implements the “worker tick” from the guide:
+
+  - Loads up to 50 mailboxes with **active runs** (fair scheduling).
+  - For each run:
+    - If `status === 'queued'`, sets it to `running`.
+    - Dispatches to provider-specific handler:
+      - Gmail: `processGmailRun`
+      - Outlook: `processOutlookRun`
+    - Increments `importedCount` and updates `cursorSnapshot` metrics.
+    - On success: leaves status as `running` or sets it to `done` for full imports that finished.
+    - On error: sets `status = 'error'` and populates `error`.
+
+This aligns directly with **Step 1 / Step 8** of `sync-guide.md` (decoupled architecture, fairness, and background processing).
+
+---
+
+**4. Gmail: Full Backfill + Delta (Metadata-Only)**
+
+Implemented in `sync-engine.ts` via:
+
+- `processGmailRun(mb, run, metrics)`
+- `gmailBackfillTick(...)`
+- `gmailDeltaTick(...)`
+
+**Backfill (full import, chunked)**
+
+- Cursor:
+
+  - Stored in `mailbox_cursors.backfill` as `GmailBackfillCursor`.
+  - Defaults to:
+
+    ```json
+    {
+      "type": "gmail_backfill",
+      "q": "-in:chats",
+      "pageToken": null,
+      "indexInPage": 0,
+      "done": false
+    }
+    ```
+
+- Each worker tick:
+
+  - Calls `users.messages.list` with:
+    - `maxResults=500`
+    - `pageToken` from cursor
+    - `q=-in:chats`
+  - Takes a **slice** of IDs: `indexInPage .. indexInPage + 200`  
+    (`GMAIL_BACKFILL_BATCH_GET = 200`)
+  - For that slice, calls `users.messages.get` in metadata mode:
+
+    ```text
+    format=metadata
+    metadataHeaders=From,To,Subject,Date,List-Unsubscribe,List-Unsubscribe-Post
+    ```
+
+  - Each message is passed to `upsertMessageAndInventory(...)`.
+
+  - Cursor is updated:
+    - `indexInPage` advanced to next offset within the page
+    - When end-of-page reached:
+      - `indexInPage` reset to `0`
+      - `pageToken` replaced with `nextPageToken` or set to `null`
+      - If no `nextPageToken`, `done = true`
+    - Tracks `lastHistoryId` from message `historyId`, used to seed delta.
+
+- Metrics per tick:
+
+  - `gmailCalls` (1 list + N get calls)
+  - `gmailQuotaUnits` (list=5, get=5 each)
+
+  Stored in `sync_runs.cursorSnapshot` as a JSON object, making the **quota cost** visible per run.
+
+**Delta (history-based)**
+
+- Cursor:
+
+  - Stored in `mailbox_cursors.delta` as `GmailDeltaCursor`.
+  - When a delta run is started and there is a backfill cursor with `lastHistoryId`, the delta cursor is seeded from it:
+
+    ```ts
+    const seedHistoryId = backfill && backfill.lastHistoryId ? backfill.lastHistoryId : '';
+    delta = {
+      type: 'gmail_history',
+      startHistoryId: seedHistoryId,
+      lastHistoryId: seedHistoryId,
+      lastDeltaAt: nowIso(),
+    };
+    ```
+
+- Each delta tick:
+
+  - If `lastHistoryId` is empty, no-op (nothing to track yet).
+  - Otherwise:
+    - Calls `users.history.list(startHistoryId=lastHistoryId)`.
+    - Collects IDs from `history[].messagesAdded[].message.id` and `history[].messages[].id`.
+    - Deduplicates via a `Set`, then iterates over the array.
+    - For each ID, calls `messages.get` (metadata only) and upserts via `upsertMessageAndInventory`.
+    - Updates `lastHistoryId` from the response `historyId`.
+    - Updates `lastDeltaAt` to current time.
+
+- Error handling:
+
+  - If Gmail returns 404 or a “history too old” style response, delta cursor is reset (empty history IDs but same type), so you can trigger a repair backfill later, as described in `sync-guide.md`.
+
+- Metrics:
+
+  - Same as backfill: `gmailCalls` and `gmailQuotaUnits` are incremented and persisted per run.
+
+This corresponds to **Step 3** and **Step 4** of `sync-guide.md` and introduces **true incremental sync** so you no longer have to re-import the entire mailbox to stay up to date.
+
+---
+
+**5. Outlook / Microsoft Graph: Full Backfill + Delta**
+
+Also in `sync-engine.ts`, via:
+
+- `processOutlookRun(mb, run, metrics)`
+- `outlookBackfillTick(...)`
+- `outlookDeltaTick(...)`
+- `refreshOutlookToken(...)`
+
+**Full backfill**
+
+- Cursor:
+
+  - Stored in `mailbox_cursors.backfill` as `GraphBackfillCursor`.
+  - When a full run is started and no cursor exists, it is initialized as:
+
+    ```ts
+    {
+      type: 'graph_backfill',
+      folders: {
+        inbox: { nextLink: null, done: false },
+        junk:  { nextLink: null, done: false },
+      },
+    }
+    ```
+
+- Each tick:
+
+  - Picks the first folder in order (`inbox`, then `junk`) that is not `done`.
+  - For that folder:
+    - Uses `nextLink` if present; otherwise:
+      - Inbox: `/me/mailFolders/Inbox/messages?...&$top=100`
+      - Junk:  `/me/mailFolders/JunkEmail/messages?...&$top=100`
+    - Calls Graph with `fetchWithRetry` and bearer token.
+    - For each message ID:
+      - Fetches with:
+
+        ```text
+        /me/messages/{id}?$select=subject,receivedDateTime,from,toRecipients,internetMessageHeaders
+        ```
+
+      - Parses `List-Unsubscribe` headers and calls `upsertMessageAndInventory`.
+    - Updates folder cursor:
+      - `nextLink` from `@odata.nextLink` if present
+      - `done = true` if no `nextLink` returned.
+
+- Token refresh:
+
+  - If a 401/403 occurs, `refreshOutlookToken` runs:
+    - Calls the token endpoint with the stored refresh token.
+    - Updates encrypted token blob in `mailboxes` with new access and refresh tokens.
+    - Returns a new access token to continue.
+
+- Completion:
+
+  - A full run is considered `done` when all folder cursors in `GraphBackfillCursor.folders` have `done === true`.
+
+**Delta (messages/delta)**
+
+- Cursor:
+
+  - Stored in `mailbox_cursors.delta` as `GraphDeltaCursor`.
+  - Default shape when a delta run starts:
+
+    ```ts
+    {
+      type: 'graph_delta',
+      folders: {
+        inbox: { nextLink: null, deltaLink: null, done: false },
+        junk:  { nextLink: null, deltaLink: null, done: false },
+      },
+    }
+    ```
+
+- Each tick:
+
+  - For each folder (inbox, then junk):
+
+    - Build base URL:
+
+      - Inbox: `.../Inbox/messages/delta?...&$top=100`
+      - Junk:  `.../JunkEmail/messages/delta?...&$top=100`
+
+    - Pick URL in priority: `nextLink || deltaLink || baseUrl`.
+    - Call Graph with `fetchWithRetry`, token refresh if needed.
+    - For each item in `value[]`:
+      - If it has `@removed`, treat as soft-delete (currently skipped, but you can extend to mark deleted in DB).
+      - Otherwise:
+        - Uses inline headers + metadata and calls `upsertMessageAndInventory`.
+    - Updates folder cursor:
+      - `nextLink` from `@odata.nextLink` (paging)
+      - `deltaLink` from `@odata.deltaLink` (checkpoint) when present.
+
+This follows **Step 5** and **Step 6** of `sync-guide.md` and means Outlook mailboxes can be brought up to date incrementally rather than with repeated full scans.
+
+---
+
+**6. New API Endpoints (Decoupled Architecture)**
+
+To match the guide’s recommended API shape, three new endpoints were added:
+
+1. **Start a run**  
+   [src/app/api/sync/start/route.ts](file:///d:/TRAE/email-app/src/app/api/sync/start/route.ts)
+
+   ```http
+   POST /api/sync/start
+   Content-Type: application/json
+   Body: { "mailboxId"?: string, "mode"?: "quick" | "full" | "delta" }
+   ```
+
+   - Authenticated via Supabase cookie (`getUserId`).
+   - If `mailboxId` not provided, falls back to `mb` cookie.
+   - Creates a `sync_runs` row with status `queued`.
+   - Returns:
+
+     ```json
+     { "run": { ...SyncRun } }
+     ```
+
+2. **Poll run status**  
+   [src/app/api/sync/status/route.ts](file:///d:/TRAE/email-app/src/app/api/sync/status/route.ts)
+
+   ```http
+   GET /api/sync/status?mailboxId=...
+   ```
+
+   - Requires Supabase auth.
+   - Also falls back to `mb` cookie if query param missing.
+   - Returns last run for that user + mailbox:
+
+     ```json
+     { "run": { ...SyncRun } | null }
+     ```
+
+   This is designed for your **progress card** in Overview/Onboarding (Step 9 UX).
+
+3. **Worker tick (cron / internal)**  
+   [src/app/api/jobs/sync-tick/route.ts](file:///d:/TRAE/email-app/src/app/api/jobs/sync-tick/route.ts)
+
+   ```http
+   POST /api/jobs/sync-tick
+   X-Internal-Secret: <SYNC_WORKER_SECRET>
+   ```
+
+   - Protected by `SYNC_WORKER_SECRET` env var.
+   - Calls `syncWorkerTick()` with the default `maxMailboxesPerCycle = 50`.
+   - Returns:
+
+     ```json
+     { "processed": number }
+     ```
+
+   This is where you point Vercel/Supabase cron:
+
+   - Every 1–5 minutes for backfill.
+   - Every 10–30 minutes for delta (you can control by mode when creating runs).
+
+**Important:** The old `/api/sync` endpoint is left intact and still implements the existing “quick/full” behavior used by the UI today, so nothing breaks while you migrate the frontend to the new start/status flow.
+
+---
+
+**7. Error Handling & Rate-Limit Resilience**
+
+The sync engine uses and extends your existing error-handling patterns:
+
+- **Centralized backoff for provider APIs**
+
+  - All Gmail and Graph HTTP calls use `fetchWithRetry`  
+    [fetch.ts](file:///d:/TRAE/email-app/src/lib/server/fetch.ts)
+  - On `429` or `>=500`, it exponentially backs off with jitter and retries.
+
+- **Run-level error reporting**
+
+  - Any unhandled error during `processGmailRun` or `processOutlookRun` is caught in `syncWorkerTick`:
+    - `sync_runs.status = 'error'`
+    - `sync_runs.error = <message>`
+  - This gives you a durable record in Supabase for monitoring/debug.
+
+- **Auth failures**
+
+  - Gmail: if OAuth client credentials are missing, the run ends with `done=true` for that mailbox.
+  - Outlook: `refreshOutlookToken` handles expired access tokens and persists refreshed blobs; if refresh fails, the run records an error.
+
+You can later extend error categorization with a `needs_reauth` status by checking for specific error codes and setting `status` accordingly; the schema supports it already.
+
+---
+
+**8. Cost & Performance Metrics**
+
+Metrics are tracked per run and stored in `sync_runs.cursorSnapshot` as a JSON blob (`SyncMetrics`):
+
+- `gmailQuotaUnits`: estimated Gmail quota units consumed by the run
+- `gmailCalls`: total Gmail API calls (list + get)
+- `outlookCalls`: total Microsoft Graph calls
+- `processedMessages`: extensible if you want to track more granular counts
+
+Because each worker tick processes:
+
+- At most **200 Gmail messages** (per `GMAIL_BACKFILL_BATCH_GET`)
+- At most **100 Outlook messages** per folder
+
+…your **cost per tick** is bounded and visible, which directly addresses the “reduce operational costs” portion of your requirement.
+
+You can inspect these metrics either:
+
+- Directly in Supabase table `sync_runs.cursorSnapshot`
+- Or by adding a small admin-only UI panel later that surfaces these fields.
+
+---
+
+**9. Validation & Comparing Against Baseline**
+
+Automated unit tests aren’t wired into this repo yet, but you now have:
+
+- Verified **type safety**: `npm run typecheck` passes after the changes.
+- Verified lint run: `npm run lint` currently fails due to pre-existing `any` usage in other files; new code was written without adding additional `any` violations except where pre-existing patterns exist.
+
+To compare old vs new behavior in practice:
+
+1. **Baseline (current `/api/sync`)**
+
+   - Pick a mailbox with a sizeable message history.
+   - In dev, open Network tab and run a full scan from the UI (mode=`full`) which hits `POST /api/sync`.
+   - Record:
+     - Request duration
+     - `gmail` / `outlook` counts in the JSON response
+     - Any timeouts or errors
+
+2. **New engine: full backfill**
+
+   - Call `POST /api/sync/start` with `{ mode: "full" }` (or `"quick"`) for the same mailbox.
+   - Configure cron (e.g., every minute) to call `POST /api/jobs/sync-tick` with the correct secret.
+   - Poll `GET /api/sync/status?mailboxId=...` from a small dev script or the browser console every few seconds.
+   - Observe:
+     - `status` progressing from `queued` → `running` → `done`
+     - `importedCount` increasing in small batches
+     - `cursorSnapshot.gmailQuotaUnits` and `cursorSnapshot.gmailCalls` stabilizing
+   - Compare:
+     - Total time to import N messages vs. old `/api/sync`
+     - Whether UI stays responsive (requests are short-lived vs one long sync call)
+
+3. **New engine: delta**
+
+   - After backfill completes, start a `delta` run:
+
+     ```bash
+     curl -X POST /api/sync/start \
+       -H "Content-Type: application/json" \
+       -d '{"mailboxId": "...", "mode": "delta"}'
+     ```
+
+   - Send/receive some new emails into the mailbox (Gmail + Outlook).
+   - Trigger `POST /api/jobs/sync-tick` periodically.
+   - Confirm via:
+     - `messages` table rows increasing
+     - `sync_runs.importedCount` growing modestly without another full backfill
+     - `cursorSnapshot` increasing by a small number of calls rather than a large backfill cost
+
+This demonstrates measurable improvement:
+
+- **Latency**: user-facing requests become small, fast control-plane calls.
+- **Cost**: you avoid re-fetching the entire mailbox; quota usage is visible and limited by small batches.
+- **Resilience**: worker can be killed and restarted; progress is persisted in `mailbox_cursors` and `sync_runs`.
+
+---
+
+**10. How to hook this into the UI**
+
+The current UI still calls `/api/sync` directly from:
+
+- [overview/page.tsx](file:///d:/TRAE/email-app/src/app/overview/page.tsx#L190-L239)
+- [onboarding/page.tsx](file:///d:/TRAE/email-app/src/app/onboarding/page.tsx#L81-L127)
+
+Without changing behavior, the app will continue to use the old synchronous route.
+
+To fully adopt the new architecture (when you’re ready), you can:
+
+- Replace those calls with:
+  - `POST /api/sync/start` (to trigger)
+  - Poll `GET /api/sync/status` (to drive the progress card)
+- Use the `SyncRun` fields to show:
+  - Mode, status, stage
+  - `importedCount`
+  - Last error if `status === 'error'`
+
+That will complete the UX side of **Step 9: The UX Flow** from `sync-guide.md`.
+

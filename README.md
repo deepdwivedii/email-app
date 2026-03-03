@@ -11,7 +11,7 @@
 - Header-only ingestion: From, To, Subject, Date, List-Unsubscribe, List-Unsubscribe-Post.
 - Domain inventory with counts, last seen, unsubscribe status, and recent emails.
 - Safe Unsubscribe: RFC 8058 one-click HTTP when available; `mailto:` acknowledged.
-- AI Suggestion: Gemini via Genkit recommends the most likely unsubscribe domain with confidence and reasoning.
+- AI Suggestion: OpenRouter-hosted model via Genkit recommends the most likely unsubscribe domain with confidence and reasoning.
 - Accounts-first UI backed by evidence; Tasks page to track actions.
 - Settings page for privacy controls (export/delete) and a footer link for discoverability.
 
@@ -125,7 +125,7 @@ actionLogs: {
 - `MS_OAUTH_CLIENT_ID`, `MS_OAUTH_CLIENT_SECRET`
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `ENCRYPTION_KEY_32B` (AES‑256‑GCM key for token encryption)
-- Optional: `GEMINI_API_KEY`
+- Optional: `OPENROUTER_API_KEY`
 
 ## OAuth Configuration
 
@@ -156,6 +156,6 @@ actionLogs: {
 - OAuth failures: verify client IDs, secrets, redirect URIs, and scopes.
 - Sync errors: confirm API permissions; check token refresh for Outlook.
 - Inventory empty: ensure `__session` and `mb` cookies are set after OAuth.
-- AI suggestion errors: verify Genkit config and API key.
+- AI suggestion errors: verify Genkit config and OpenRouter API key.
 - Accounts empty: trigger manual sync; verify `emailIdentities` created on OAuth.
 - Repeated 404 for `OneSignalSDKWorker.js`: worker stubs are present under `public/` to prevent dev 404s; integrate OneSignal if push is needed.

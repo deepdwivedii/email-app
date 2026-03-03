@@ -16,11 +16,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing Google OAuth secrets' }, { status: 500 });
   }
   const client = new OAuth2Client({ clientId, clientSecret, redirectUri });
+  const alias = req.nextUrl.searchParams.get('alias') || '';
+  let state: string | undefined;
+  if (alias) {
+    try {
+      const payload = JSON.stringify({ alias });
+      state = Buffer.from(payload, 'utf8').toString('base64url');
+    } catch {
+      state = undefined;
+    }
+  }
   const url = client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: scopes,
     include_granted_scopes: true,
+    state,
   });
   return NextResponse.redirect(url, { status: 302 });
 }

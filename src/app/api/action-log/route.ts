@@ -7,8 +7,8 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ logs: [] }, { status: 200 });
   const { data } = await (await actionLogsTable())
     .select('*')
-    .eq('userId', userId)
-    .order('createdAt', { ascending: false })
+    .eq('userid', userId)
+    .order('createdat', { ascending: false })
     .limit(200);
   return NextResponse.json({ logs: data ?? [] });
 }
