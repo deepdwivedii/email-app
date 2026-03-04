@@ -42,9 +42,9 @@ async function initFromEnv(): Promise<BrowserSupabaseClient | null> {
 
   if (!supabaseUrl || !supabaseAnonKey) return null;
   try {
+    new URL(supabaseUrl);
     return createClient(supabaseUrl, supabaseAnonKey);
-  } catch (e) {
-    console.error('Failed to initialize Supabase client', e);
+  } catch {
     return null;
   }
 }
@@ -57,9 +57,9 @@ async function initFromServer(): Promise<BrowserSupabaseClient | null> {
     const url = normalizeSupabaseUrl(String(j.url));
     const anonKey = cleanEnv(String(j.anonKey));
     if (!url || !anonKey) return null;
+    new URL(url);
     return createClient(url, anonKey);
-  } catch (e) {
-    console.error('Failed to load Supabase config', e);
+  } catch {
     return null;
   }
 }
@@ -73,9 +73,9 @@ export async function getSupabaseClient() {
   if (typeof window === 'undefined') return null;
   if (!initPromise) {
     initPromise = (async () => {
-      const fromEnv = await initFromEnv();
-      if (fromEnv) return fromEnv;
-      return initFromServer();
+      const fromServer = await initFromServer();
+      if (fromServer) return fromServer;
+      return initFromEnv();
     })();
   }
   client = await initPromise;
