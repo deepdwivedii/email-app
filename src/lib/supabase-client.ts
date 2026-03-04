@@ -2,10 +2,14 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined;
-const supabaseAnonKey =
+const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined;
+const supabaseUrl =
+  typeof rawSupabaseUrl === 'string' ? rawSupabaseUrl.trim() : rawSupabaseUrl;
+const rawSupabaseAnonKey =
   (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
   (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined);
+const supabaseAnonKey =
+  typeof rawSupabaseAnonKey === 'string' ? rawSupabaseAnonKey.trim() : rawSupabaseAnonKey;
 
 let client: ReturnType<typeof createBrowserClient> | null = null;
 
