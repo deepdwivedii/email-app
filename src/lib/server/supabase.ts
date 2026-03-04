@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 export async function getServerSupabase() {
   const cleanEnv = (value: string | undefined) => {
     if (typeof value !== 'string') return value;
-    const trimmed = value.trim();
+    const trimmed = value.trim().replace(/\s+#.*$/, '');
     const printable = trimmed.replace(/[^\x21-\x7E]/g, '');
     return printable.replace(/^['"`]+|['"`]+$/g, '');
   };
@@ -19,23 +19,35 @@ export async function getServerSupabase() {
     return cleaned;
   };
 
-  const url = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) as string;
+  const url = normalizeSupabaseUrl(
+    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
+      (process.env.NEXT_PUBLIC_SUPABASE_DATABASE_URL as string | undefined) ||
+      (process.env.SUPABASE_DATABASE_URL as string | undefined) ||
+      "https://mxyimbouftlqkhewffvd.supabase.co"
+  ) as string;
   const anon = cleanEnv(
     (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
-      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined)
+      (process.env.SUPABASE_ANON_KEY as string | undefined) ||
+      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined) ||
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eWltYm91ZnRscWtoZXdmZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDE4MjQsImV4cCI6MjA4ODAxNzgyNH0.wJR2wVxAYUf0pX86fBfXzxCAnjBuzo32V2AzFBPQ26o"
   ) as string;
 
   const cookieStore = await cookies();
   const client = createServerClient(url, anon, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value;
+      getAll() {
+        return cookieStore.getAll();
       },
-      set(name: string, value: string, options: any) {
-        cookieStore.set({ name, value, ...options });
-      },
-      remove(name: string, options: any) {
-        cookieStore.set({ name, value: '', ...options });
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          );
+        } catch {
+          // The `setAll` method was called from a Server Component.
+          // This can be ignored if you have middleware refreshing
+          // user sessions.
+        }
       },
     },
   });

@@ -23,11 +23,16 @@ export async function updateSession(request: NextRequest) {
     return cleaned;
   };
 
-  const url = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) as string;
+  const url = normalizeSupabaseUrl(
+    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
+    (process.env.NEXT_PUBLIC_SUPABASE_DATABASE_URL as string | undefined) ||
+    "https://mxyimbouftlqkhewffvd.supabase.co"
+  ) as string;
   const key = cleanEnv(
     (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
       (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
-      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined)
+      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined) ||
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eWltYm91ZnRscWtoZXdmZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDE4MjQsImV4cCI6MjA4ODAxNzgyNH0.wJR2wVxAYUf0pX86fBfXzxCAnjBuzo32V2AzFBPQ26o"
   ) as string;
 
   const supabase = createServerClient(url, key, {
@@ -47,13 +52,15 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const { data } = await supabase.auth.getClaims();
-  const user = data?.claims;
+  const { data: { user } } = await supabase.auth.getUser();
 
   if (
     !user &&
     !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/auth')
+    !request.nextUrl.pathname.startsWith('/auth') &&
+    !request.nextUrl.pathname.startsWith('/signup') &&
+    !request.nextUrl.pathname.startsWith('/api/public') &&
+    request.nextUrl.pathname !== '/'
   ) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';

@@ -6,7 +6,7 @@ type AppLogoProps = Omit<ComponentProps<typeof Image>, 'src' | 'alt'> & {
 };
 
 export function AppLogo({ alt = 'Atlas logo', ...props }: AppLogoProps) {
-  return <Image src="/logo.png" alt={alt} width={32} height={32} {...props} />;
+  return <Image src="/logo.png" alt={alt} width={32} height={32} priority {...props} />;
 }
 
 export function GmailIcon(props: ComponentProps<'svg'>) {

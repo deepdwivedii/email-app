@@ -34,10 +34,16 @@ function createClient(url: string, anonKey: string) {
 }
 
 async function initFromEnv(): Promise<BrowserSupabaseClient | null> {
-  const supabaseUrl = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined);
+  const supabaseUrl = normalizeSupabaseUrl(
+    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
+      (process.env.NEXT_PUBLIC_SUPABASE_DATABASE_URL as string | undefined) ||
+      "https://mxyimbouftlqkhewffvd.supabase.co"
+  );
   const supabaseAnonKey = cleanEnv(
     (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
-      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined)
+      (process.env.SUPABASE_ANON_KEY as string | undefined) ||
+      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined) ||
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eWltYm91ZnRscWtoZXdmZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDE4MjQsImV4cCI6MjA4ODAxNzgyNH0.wJR2wVxAYUf0pX86fBfXzxCAnjBuzo32V2AzFBPQ26o"
   );
 
   if (!supabaseUrl || !supabaseAnonKey) return null;
@@ -99,9 +105,9 @@ export async function getSupabaseClient() {
   if (typeof window === 'undefined') return null;
   if (!initPromise) {
     initPromise = (async () => {
-      const fromServer = await initFromServer();
-      if (fromServer) return fromServer;
-      return initFromEnv();
+      const fromEnv = await initFromEnv();
+      if (fromEnv) return fromEnv;
+      return initFromServer();
     })();
   }
   client = await initPromise;

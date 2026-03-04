@@ -18,11 +18,17 @@ const normalizeSupabaseUrl = (value: string | undefined) => {
 };
 
 export async function GET(req: NextRequest) {
-  const url = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined);
+  const url = normalizeSupabaseUrl(
+    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
+      (process.env.NEXT_PUBLIC_SUPABASE_DATABASE_URL as string | undefined) ||
+      (process.env.SUPABASE_DATABASE_URL as string | undefined) ||
+      "https://mxyimbouftlqkhewffvd.supabase.co"
+  );
   const anonKey = cleanEnv(
     (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
+      (process.env.SUPABASE_ANON_KEY as string | undefined) ||
       (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined) ||
-      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined)
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eWltYm91ZnRscWtoZXdmZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDE4MjQsImV4cCI6MjA4ODAxNzgyNH0.wJR2wVxAYUf0pX86fBfXzxCAnjBuzo32V2AzFBPQ26o"
   );
 
   const debug = new URL(req.url).searchParams.get('debug') === '1';

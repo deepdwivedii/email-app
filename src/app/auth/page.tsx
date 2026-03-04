@@ -99,7 +99,7 @@ function AuthPageInner() {
       }
       const { error } = await client.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: origin },
+        options: { emailRedirectTo: `${origin}/auth/callback` },
       });
       if (error) throw error;
       toast({
@@ -127,7 +127,7 @@ function AuthPageInner() {
       }
       await client.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: origin },
+        options: { redirectTo: `${origin}/auth/callback` },
       });
     } catch (error: any) {
       toast({
@@ -151,7 +151,7 @@ function AuthPageInner() {
       const { data, error } = await client.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: origin },
+        options: { emailRedirectTo: `${origin}/auth/callback` },
       });
       if (error) throw error;
       if (data.user && !data.session) {
