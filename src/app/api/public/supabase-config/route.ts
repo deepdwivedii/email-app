@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const cleanEnv = (value: string | undefined) => {
   if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/\s+#.*$/, '');
   const printable = trimmed.replace(/[^\x21-\x7E]/g, '');
   return printable.replace(/^['"`]+|['"`]+$/g, '');
 };

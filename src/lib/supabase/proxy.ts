@@ -8,7 +8,7 @@ export async function updateSession(request: NextRequest) {
 
   const cleanEnv = (value: string | undefined) => {
     if (typeof value !== 'string') return value;
-    const trimmed = value.trim();
+    const trimmed = value.trim().replace(/\s+#.*$/, '');
     const printable = trimmed.replace(/[^\x21-\x7E]/g, '');
     return printable.replace(/^['"`]+|['"`]+$/g, '');
   };
@@ -24,7 +24,11 @@ export async function updateSession(request: NextRequest) {
   };
 
   const url = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) as string;
-  const key = cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) as string;
+  const key = cleanEnv(
+    (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
+      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
+      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined)
+  ) as string;
 
   const supabase = createServerClient(url, key, {
     cookies: {
