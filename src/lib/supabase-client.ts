@@ -27,22 +27,24 @@ const supabaseAnonKey = cleanEnv(
 
 let client: ReturnType<typeof createBrowserClient> | null = null;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Supabase env missing or invalid', {
-    hasUrl: !!supabaseUrl,
-    hasKey: !!supabaseAnonKey,
-    supabaseUrl,
-  });
-} else {
-  try {
-    client = createBrowserClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-      },
+if (typeof window !== 'undefined') {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('Supabase env missing or invalid', {
+      hasUrl: !!supabaseUrl,
+      hasKey: !!supabaseAnonKey,
+      supabaseUrl,
     });
-  } catch (e) {
-    console.error('Failed to initialize Supabase client', e);
+  } else {
+    try {
+      client = createBrowserClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+        },
+      });
+    } catch (e) {
+      console.error('Failed to initialize Supabase client', e);
+    }
   }
 }
 
