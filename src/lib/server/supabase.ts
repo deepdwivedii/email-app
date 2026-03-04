@@ -5,7 +5,8 @@ export async function getServerSupabase() {
   const cleanEnv = (value: string | undefined) => {
     if (typeof value !== 'string') return value;
     const trimmed = value.trim();
-    return trimmed.replace(/^['"`]+|['"`]+$/g, '');
+    const printable = trimmed.replace(/[^\x21-\x7E]/g, '');
+    return printable.replace(/^['"`]+|['"`]+$/g, '');
   };
 
   const normalizeSupabaseUrl = (value: string | undefined) => {
