@@ -24,10 +24,7 @@ const supabaseAnonKey = cleanEnv(
 
 let client: ReturnType<typeof createBrowserClient> | null = null;
 
-const looksLikeUrl = (value: string | undefined) =>
-  typeof value === 'string' && /^https?:\/\//i.test(value);
-
-if (!supabaseUrl || !supabaseAnonKey || !looksLikeUrl(supabaseUrl)) {
+if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Supabase env missing or invalid', {
     hasUrl: !!supabaseUrl,
     hasKey: !!supabaseAnonKey,
