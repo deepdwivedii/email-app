@@ -29,9 +29,9 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const mailboxIds = mailboxes.map((m: any) => m.id as string);
-  const lastSyncAt = mailboxes.reduce<number | null>((acc, m: any) => {
-    const v = m.lastsyncat ? Number(m.lastsyncat) : null;
+  const mailboxIds = mailboxes.map(m => m.id as string);
+  const lastSyncAt = mailboxes.reduce<number | null>((acc, m) => {
+    const v = m.lastsyncat ? Number(m.lastsyncat as number) : null;
     if (v && (!acc || v > acc)) return v;
     return acc;
   }, null);
@@ -80,4 +80,3 @@ export async function GET(req: NextRequest) {
     },
   });
 }
-

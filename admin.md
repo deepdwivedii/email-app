@@ -24,7 +24,7 @@ Authentication:
 
   - `X-Admin-Token: <ADMIN_APP_TOKEN>`
 
-- Helper: `src/lib/server/admin-auth.ts`
+- Helper: [`src/lib/server/admin-auth.ts`](src/lib/server/admin-auth.ts)
 
   ```ts
   import { NextRequest } from "next/server";
@@ -49,9 +49,9 @@ All admin APIs require the `x-admin-token` header with the configured `ADMIN_APP
 
 ### 1. List Recent Sync Runs
 
-Route: `GET /api/admin/sync-runs`
+Route: [`GET /api/admin/sync-runs`](/api/admin/sync-runs)
 
-File: `src/app/api/admin/sync-runs/route.ts`
+File: [`src/app/api/admin/sync-runs/route.ts`](src/app/api/admin/sync-runs/route.ts)
 
 Query parameters:
 
@@ -108,9 +108,9 @@ Response shape:
 
 ### 2. Single Sync Run Detail
 
-Route: `GET /api/admin/sync-runs/:id`
+Route: [`GET /api/admin/sync-runs/:id`](/api/admin/sync-runs/:id)
 
-File: `src/app/api/admin/sync-runs/[id]/route.ts`
+File: [`src/app/api/admin/sync-runs/[id]/route.ts`](src/app/api/admin/sync-runs/[id]/route.ts)
 
 Behavior:
 
@@ -128,9 +128,9 @@ Used primarily for deeper debugging; current UI uses the list endpoint.
 
 ### 3. Admin-Triggered Worker Tick
 
-Route: `POST /api/admin/sync-tick`
+Route: [`POST /api/admin/sync-tick`](/api/admin/sync-tick)
 
-File: `src/app/api/admin/sync-tick/route.ts`
+File: [`src/app/api/admin/sync-tick/route.ts`](src/app/api/admin/sync-tick/route.ts)
 
 Behavior:
 
@@ -147,11 +147,11 @@ Where `processed` is the number of runs processed in that tick.
 
 ---
 
-## Admin UI: `/admin/sync`
+## Admin UI: [`/admin/sync`](/admin/sync)
 
-Route: `/admin/sync`
+Route: [`/admin/sync`](/admin/sync)
 
-File: `src/app/admin/sync/page.tsx`
+File: [`src/app/admin/sync/page.tsx`](src/app/admin/sync/page.tsx)
 
 Client-side page that:
 
@@ -288,4 +288,3 @@ Loading and error states:
      - compact metrics (`gmailQuotaUnits`, `gmailCalls`, `outlookCalls`)
 
 This admin surface is intended for internal use in development and staging to observe and control the sync engine safely without exposing it to end users.
-

@@ -6,14 +6,27 @@ import { fetchWithRetry } from '@/lib/server/fetch';
 import { getUserId } from '@/lib/server/auth';
 import { upsertMessageAndInventory } from '@/lib/server/sync-shared';
 
+const QUICK_MAX_MESSAGES_PER_PROVIDER = 40;
+const FULL_MAX_MESSAGES_PER_PROVIDER = 200;
+const SYNC_SOFT_RUNTIME_MS = 8000;
+
 export async function POST(req: NextRequest) {
   type SyncResults = { gmail: number; outlook: number; errors: string[]; lastSynced: number };
   const results: SyncResults = { gmail: 0, outlook: 0, errors: [], lastSynced: Date.now() };
+  const startedAt = Date.now();
+  let softTimedOut = false;
+  const isSoftTimedOut = () => Date.now() - startedAt >= SYNC_SOFT_RUNTIME_MS;
+  const markSoftTimeout = () => {
+    if (!softTimedOut) {
+      softTimedOut = true;
+      results.errors.push('sync:soft_timeout');
+    }
+  };
   let mode: 'quick' | 'full' = 'full';
   try {
     const contentType = req.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
-      const body = await req.json();
+      const body = await req.json() as { mode?: string };
       if (body && body.mode === 'quick') {
         mode = 'quick';
       }
@@ -34,7 +47,7 @@ export async function POST(req: NextRequest) {
 
   if (currentMailboxId) {
     const { data: mbs } = await (await mailboxesTable()).select('*').eq('id', currentMailboxId).limit(1);
-    const mbRow = mbs && (mbs[0] as any);
+    const mbRow = mbs && mbs[0];
     const mbDoc: Mailbox | undefined = mbRow ? {
       id: mbRow.id,
       userId: mbRow.userid,
@@ -51,15 +64,15 @@ export async function POST(req: NextRequest) {
   } else {
     // If no active mailbox cookie, sync all mailboxes for the user
     const { data: mbs } = await (await mailboxesTable()).select('*').eq('userid', sessionUserId);
-    targetMailboxes = (mbs || []).map((mbRow: any) => ({
-      id: mbRow.id,
-      userId: mbRow.userid,
-      provider: mbRow.provider,
-      email: mbRow.email,
-      tokenBlobEncrypted: mbRow.tokenblobencrypted,
-      cursor: mbRow.cursor ?? undefined,
-      connectedAt: mbRow.connectedat,
-      lastSyncAt: mbRow.lastsyncat ?? undefined,
+    targetMailboxes = (mbs || []).map(mbRow => ({
+      id: mbRow.id as string,
+      userId: mbRow.userid as string,
+      provider: mbRow.provider as Mailbox['provider'],
+      email: mbRow.email as string,
+      tokenBlobEncrypted: mbRow.tokenblobencrypted as string,
+      cursor: (mbRow.cursor as string | null) ?? undefined,
+      connectedAt: mbRow.connectedat as number,
+      lastSyncAt: (mbRow.lastsyncat as number | null) ?? undefined,
     }));
   }
 
@@ -80,6 +93,10 @@ export async function POST(req: NextRequest) {
     if (clientId && clientSecret) {
       const maybe = targetMailboxes.filter(m => m.provider === 'gmail');
       for (const mb of maybe) {
+        if (isSoftTimedOut()) {
+          markSoftTimeout();
+          break;
+        }
         try {
           type GmailTokenBlob = { access_token: string; refresh_token: string };
           const tokens = decryptJson<GmailTokenBlob>(mb.tokenBlobEncrypted);
@@ -90,12 +107,19 @@ export async function POST(req: NextRequest) {
           });
           const fresh = await oauth.getAccessToken();
           const accessToken = fresh?.token || tokens.access_token;
-          const maxMessages = mode === 'quick' ? 500 : 10000;
+          const maxMessages = mode === 'quick' ? QUICK_MAX_MESSAGES_PER_PROVIDER : FULL_MAX_MESSAGES_PER_PROVIDER;
           let fetchedGmail = 0;
           let pageToken: string | undefined;
           do {
+            if (isSoftTimedOut()) {
+              markSoftTimeout();
+              break;
+            }
             const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages');
             listUrl.searchParams.set('maxResults', '500');
+            if (mode === 'quick') {
+              listUrl.searchParams.set('q', 'newer_than:30d -in:chats');
+            }
             if (pageToken) listUrl.searchParams.set('pageToken', pageToken);
             const listRes = await fetchWithRetry(listUrl.toString(), {
               headers: { Authorization: `Bearer ${accessToken}` },
@@ -108,6 +132,10 @@ export async function POST(req: NextRequest) {
             const ids: string[] = (listJson.messages || []).map((m) => m.id);
             console.log('[Sync] Gmail page found messages:', ids.length);
             for (const id of ids) {
+              if (isSoftTimedOut()) {
+                markSoftTimeout();
+                break;
+              }
               const getUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Unsubscribe-Post`;
               const getRes = await fetchWithRetry(getUrl, {
                 headers: { Authorization: `Bearer ${accessToken}` },
@@ -135,13 +163,13 @@ export async function POST(req: NextRequest) {
           } while (pageToken && fetchedGmail < maxMessages);
           console.log('[Sync] Updating Gmail mailbox lastSyncAt');
           await (await mailboxesTable()).update({ lastsyncat: Date.now() }).eq('id', mb.id);
-        } catch (e) {
+    } catch (e) {
           console.error('[Sync] Gmail error:', e);
           results.errors.push(`gmail:${mb.email}:${(e as Error)?.message || String(e)}`);
         }
       }
     }
-  } catch (e) {
+    } catch (e) {
     results.errors.push(`gmail_global:${(e as Error)?.message || String(e)}`);
   }
 
@@ -152,6 +180,10 @@ export async function POST(req: NextRequest) {
     if (clientId && clientSecret) {
       const maybe = targetMailboxes.filter(m => m.provider === 'outlook');
       for (const mb of maybe) {
+        if (isSoftTimedOut()) {
+          markSoftTimeout();
+          break;
+        }
         console.log('[Sync] Starting Outlook sync for:', mb.email);
         try {
           type OutlookTokenBlob = { accessToken: string | null; refreshToken: string; expiresOn: string | null };
@@ -193,15 +225,23 @@ export async function POST(req: NextRequest) {
               res = await fetchMessages(accessToken!);
             }
           }
-          const maxMessages = mode === 'quick' ? 500 : 10000;
+          const maxMessages = mode === 'quick' ? QUICK_MAX_MESSAGES_PER_PROVIDER : FULL_MAX_MESSAGES_PER_PROVIDER;
           let fetchedOutlook = 0;
           let nextLink: string | undefined;
           do {
+            if (isSoftTimedOut()) {
+              markSoftTimeout();
+              break;
+            }
             if (!res.ok) throw new Error(`Graph list failed ${res.status}`);
             const data: { value?: Array<{ id: string }>; '@odata.nextLink'?: string } = await res.json();
             const items = data.value || [];
             console.log('[Sync] Outlook page found messages:', items.length);
             for (const item of items) {
+              if (isSoftTimedOut()) {
+                markSoftTimeout();
+                break;
+              }
               const mRes = await fetchWithRetry(
                 `https://graph.microsoft.com/v1.0/me/messages/${item.id}?$select=subject,receivedDateTime,from,toRecipients,internetMessageHeaders`,
                 {

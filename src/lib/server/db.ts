@@ -27,6 +27,12 @@ export type Message = {
   dkimDomain?: string;
   rootDomain?: string;
   category?: 'marketing' | 'account' | 'transactional' | 'updates' | 'other';
+  aiStatus?: string;
+  aiVersion?: string;
+  aiHash?: string;
+  aiProcessedAt?: number;
+  aiError?: string;
+  preFilterScore?: number;
 };
 
 export type Inventory = {
@@ -207,6 +213,39 @@ export type ActionLog = {
   error?: string;
   createdAt: number;
 };
+
+export type AiQueueItem = {
+  id: string;
+  mailboxId: string;
+  messageId: string;
+  status: 'queued'|'processing'|'done'|'error';
+  priority: number;
+  attempts: number;
+  nextAttemptAt: number;
+  lockedUntil?: number;
+  createdAt: number;
+};
+
+export type ActionItemRow = {
+  id: string;
+  mailboxId: string;
+  messageId: string;
+  type: string;
+  title: string;
+  dedupHash?: string;
+  surfacePriority?: number;
+  snoozedUntil?: number;
+  dueAt?: number;
+  amount?: number;
+  currency?: string;
+  actionUrl?: string;
+  confidence: number;
+  reasoning?: string;
+  createdAt: number;
+};
+
+export const aiQueueTable = async () => (await getServerSupabase()).from('ai_queue');
+export const actionItemsTable = async () => (await getServerSupabase()).from('action_items');
 
 export async function upsertEmailIdentity(input: Omit<EmailIdentity, 'id'|'createdAt'> & { id?: string }) {
   const id = input.id || (`${input.provider}:${input.email.toLowerCase()}`);

@@ -1,4 +1,4 @@
-import { messagesTable, inventoryTable, emailIdentitiesTable, type Mailbox, type Inventory } from '@/lib/server/db';
+import { messagesTable, inventoryTable, emailIdentitiesTable, type Mailbox } from '@/lib/server/db';
 import { classifyMessage } from '@/lib/server/classify';
 import { recordEvidenceAndInfer } from '@/lib/server/infer';
 import { extractRegistrableDomain } from '@/lib/server/domain';

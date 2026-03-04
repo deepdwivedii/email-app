@@ -23,11 +23,11 @@ export default function SubscriptionsPage() {
   const { data: mbData } = useSWR(user ? "/api/mailboxes" : null, fetcher);
 
   const domains: DomainInfo[] = data?.domains ?? [];
-  const mailboxes = mbData?.mailboxes ?? [];
+  const mailboxes = React.useMemo(() => mbData?.mailboxes ?? [], [mbData]);
   const aliasMap = React.useMemo<Record<string, string>>(() => {
     const map: Record<string, string> = {};
-    mailboxes.forEach((m: any) => {
-      map[m.id] = (m.displayName as string | undefined) || (m.email as string);
+    mailboxes.forEach((m: { id: string; displayName?: string; email: string }) => {
+      map[m.id] = m.displayName || m.email;
     });
     return map;
   }, [mailboxes]);

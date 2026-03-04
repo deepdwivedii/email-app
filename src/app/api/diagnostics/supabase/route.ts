@@ -23,8 +23,9 @@ export async function GET(req: NextRequest) {
       const { error } = await supabase.from(table).select('*').limit(1);
       if (error) return { ok: false, error: `${error.code || ''}:${error.message}` };
       return { ok: true };
-    } catch (e: any) {
-      return { ok: false, error: e?.message || String(e) };
+    } catch (e) {
+      const err = e as Error;
+      return { ok: false, error: err.message || String(e) };
     }
   }
 
@@ -43,8 +44,9 @@ export async function GET(req: NextRequest) {
       const { error: delErr } = await supabase.from('tasks').delete().eq('id', id);
       if (delErr) return { ok: false, error: `delete:${delErr.code || ''}:${delErr.message}` };
       return { ok: true };
-    } catch (e: any) {
-      return { ok: false, error: e?.message || String(e) };
+    } catch (e) {
+      const err = e as Error;
+      return { ok: false, error: err.message || String(e) };
     }
   }
 

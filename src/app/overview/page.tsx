@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { MetricCard } from "@/components/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -86,6 +87,17 @@ type SyncStatus = {
   lastSynced: number;
 };
 
+type ActiveSyncRun = {
+  id: string;
+  mode: "quick" | "full" | "delta";
+  status: "queued" | "running" | "paused" | "done" | "error" | "needs_reauth";
+  stage: "listing" | "fetching" | "upserting" | "aggregating";
+  importedCount: number;
+  startedAt: number;
+  finishedAt?: number;
+  error?: string;
+};
+
 export default function OverviewPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -97,12 +109,12 @@ export default function OverviewPage() {
     fetcher
   );
 
-  const mailboxes = mbData?.mailboxes ?? [];
+  const mailboxes = React.useMemo(() => mbData?.mailboxes ?? [], [mbData]);
   const activeMailboxId = mbData?.activeMailboxId ?? null;
   const summary = analyticsData?.summary;
   const aliasLegend = React.useMemo<string[]>(() => {
-    if (!mailboxes?.length) return [];
-    return mailboxes.map((m: any) => {
+    if (!mailboxes.length) return [];
+    return mailboxes.map((m: { displayName?: string; email: string }) => {
       const label = m.displayName || m.email;
       return `${label}`;
     });
@@ -125,6 +137,10 @@ export default function OverviewPage() {
       return null;
     }
   });
+  const [syncProgress, setSyncProgress] = React.useState(0);
+  const [activeRun, setActiveRun] = React.useState<ActiveSyncRun | null>(null);
+  const [pollingRun, setPollingRun] = React.useState(false);
+  const [syncingMailboxId, setSyncingMailboxId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -137,6 +153,72 @@ export default function OverviewPage() {
       window.localStorage.setItem("atlas:syncStatus", JSON.stringify(syncStatus));
     }
   }, [syncStatus]);
+
+  React.useEffect(() => {
+    if (!syncing || syncMode !== "full") {
+      setSyncProgress(0);
+      return;
+    }
+    let value = 10;
+    setSyncProgress(value);
+    const id = window.setInterval(() => {
+      value = value >= 95 ? 30 : value + 5;
+      setSyncProgress(value);
+    }, 500);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [syncing, syncMode]);
+
+  React.useEffect(() => {
+    if (!pollingRun) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const params = syncingMailboxId ? `?mailboxId=${encodeURIComponent(syncingMailboxId)}` : "";
+        const res = await fetch(`/api/sync/status${params}`);
+        const j = await res.json().catch(() => null);
+        if (!res.ok || !j?.run) {
+          if (!cancelled) {
+            setActiveRun(null);
+            setPollingRun(false);
+          }
+          return;
+        }
+        const run = j.run as ActiveSyncRun;
+        if (!cancelled) {
+          setActiveRun({
+            id: run.id,
+            mode: run.mode,
+            status: run.status,
+            stage: run.stage,
+            importedCount: Number(run.importedCount || 0),
+            startedAt: Number(run.startedAt || Date.now()),
+            finishedAt: run.finishedAt ? Number(run.finishedAt) : undefined,
+            error: run.error,
+          });
+          if (
+            run.status === "done" ||
+            run.status === "error" ||
+            run.status === "paused" ||
+            run.status === "needs_reauth"
+          ) {
+            setPollingRun(false);
+            setSyncingMailboxId(null);
+            mutateMailboxes();
+            mutateAnalytics();
+          }
+        }
+      } catch {
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [pollingRun, mutateMailboxes, mutateAnalytics, syncingMailboxId]);
 
   const [isMerged, setIsMerged] = React.useState(false);
 
@@ -189,11 +271,54 @@ export default function OverviewPage() {
     return provider === "gmail" ? "/api/oauth/google/start" : "/api/oauth/microsoft/start";
   };
 
+  const startBackgroundRun = async (mailboxId?: string) => {
+    try {
+      const res = await fetch("/api/sync/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          mailboxId ? { mode: "full", mailboxId } : { mode: "full" }
+        ),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.run) {
+        toast({
+          variant: "destructive",
+          title: "Background import not started",
+          description: j?.error || "Please try again.",
+        });
+        return;
+      }
+      const run = j.run as ActiveSyncRun;
+      setActiveRun({
+        id: run.id,
+        mode: run.mode,
+        status: run.status,
+        stage: run.stage,
+        importedCount: Number(run.importedCount || 0),
+        startedAt: Number(run.startedAt || Date.now()),
+        finishedAt: run.finishedAt ? Number(run.finishedAt) : undefined,
+        error: run.error,
+      });
+      setPollingRun(true);
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "Background import error",
+        description: e?.message || String(e),
+      });
+    }
+  };
+
   const runSync = async (mailboxId?: string) => {
     setSyncing(true);
     try {
       if (mailboxId) {
         await setActive(mailboxId);
+        setSyncingMailboxId(mailboxId);
+      }
+      if (syncMode === "full") {
+        startBackgroundRun(mailboxId);
       }
       const res = await fetch("/api/sync", {
         method: "POST",
@@ -335,14 +460,25 @@ export default function OverviewPage() {
                   Full
                 </Button>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => runSync()}
-                disabled={syncing || !hasMailboxes}
-              >
-                {syncing ? "Syncing…" : syncLabel}
-              </Button>
+              <div className="flex flex-col gap-2 sm:items-stretch sm:min-w-[220px]">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => runSync()}
+                  disabled={syncing || !hasMailboxes}
+                >
+                  {syncing ? "Syncing…" : syncLabel}
+                </Button>
+                {syncMode === "full" && (syncing || syncProgress > 0) && (
+                  <div className="space-y-1 text-[11px] text-muted-foreground">
+                    <Progress value={syncProgress || 10} />
+                    <div className="flex justify-between gap-2">
+                      <span>Importing all mail…</span>
+                      <span className="hidden sm:inline">You can keep using Atlas while this runs.</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
           {syncMode === "full" && (
@@ -353,7 +489,11 @@ export default function OverviewPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3" aria-label="Insights summary">
+      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4" aria-label="Insights summary">
+        <MetricCard
+          title="Emails scanned"
+          value={summary?.totalMessages ?? 0}
+        />
         <MetricCard
           title="Subscriptions detected"
           value={summary?.totalDomains ?? 0}
@@ -430,12 +570,18 @@ export default function OverviewPage() {
                   </span>
                 </p>
                 <p>
-                  Messages imported:{" "}
+                  Messages imported this run:{" "}
                   <span className="font-semibold">
                     {syncStatus.gmail + syncStatus.outlook}
                   </span>{" "}
                   <span className="text-xs text-muted-foreground">
                     (Gmail {syncStatus.gmail}, Outlook {syncStatus.outlook})
+                  </span>
+                </p>
+                <p>
+                  Total emails scanned:{" "}
+                  <span className="font-semibold">
+                    {summary?.totalMessages ?? 0}
                   </span>
                 </p>
                 <p>
@@ -450,6 +596,34 @@ export default function OverviewPage() {
                     {syncStatus.errors}
                   </span>
                 </p>
+                {activeRun && (
+                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground">
+                      Background full import
+                    </p>
+                    <p>
+                      Status:{" "}
+                      <span className="font-semibold capitalize">
+                        {activeRun.status}
+                      </span>{" "}
+                      • Stage:{" "}
+                      <span className="font-semibold capitalize">
+                        {activeRun.stage}
+                      </span>
+                    </p>
+                    <p>
+                      Messages processed this run:{" "}
+                      <span className="font-semibold">
+                        {activeRun.importedCount}
+                      </span>
+                    </p>
+                    {activeRun.status === "error" && activeRun.error && (
+                      <p className="text-xs text-destructive">
+                        Error: {activeRun.error}
+                      </p>
+                    )}
+                  </div>
+                )}
                 {syncStatus.mode === "full" && (
                   <div className="mt-3 flex gap-2">
                     <Button
@@ -530,9 +704,9 @@ export default function OverviewPage() {
                           size="sm"
                           variant="secondary"
                           onClick={() => runSync(m.id)}
-                          disabled={syncing}
+                          disabled={syncingMailboxId === m.id || syncing}
                         >
-                          {syncing ? "Syncing…" : "Sync this inbox"}
+                          {syncingMailboxId === m.id ? "Syncing…" : "Sync this inbox"}
                         </Button>
                         <Button size="sm" variant="ghost" asChild>
                           <a href={reconnectUrl(m.provider)}>

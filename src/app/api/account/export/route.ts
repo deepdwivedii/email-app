@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { data: mailboxes } = await (await mailboxesTable()).select('*').eq('userid', userId);
   const { data: accounts } = await (await accountsTable()).select('*').eq('userid', userId);
-  const mailboxIds = (mailboxes ?? []).map((m: any) => m.id);
+  const mailboxIds = (mailboxes ?? []).map(m => m.id as string);
   let inventoryCount = 0;
   if (mailboxIds.length) {
     const { count } = await (await inventoryTable())

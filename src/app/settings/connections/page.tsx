@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import useSWR from "swr";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,18 @@ import { GmailIcon, OutlookIcon } from "@/components/icons";
 import { useRequireAuth } from "@/hooks/use-auth";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+
+type ActiveSyncRun = {
+  id: string;
+  mode: "quick" | "full" | "delta";
+  status: "queued" | "running" | "paused" | "done" | "error" | "needs_reauth";
+  stage: "listing" | "fetching" | "upserting" | "aggregating";
+  importedCount: number;
+  startedAt: number;
+  finishedAt?: number;
+  error?: string;
+};
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -15,6 +28,75 @@ export default function ConnectionsSettingsPage() {
   const { user, loading } = useRequireAuth();
   const { data, mutate } = useSWR(user ? "/api/mailboxes" : null, fetcher);
   const mailboxes = data?.mailboxes ?? [];
+  const [syncingId, setSyncingId] = React.useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = React.useState(0);
+  const [activeRun, setActiveRun] = React.useState<ActiveSyncRun | null>(null);
+  const [pollingRun, setPollingRun] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!syncingId) {
+      setSyncProgress(0);
+      return;
+    }
+    let value = 10;
+    setSyncProgress(value);
+    const id = window.setInterval(() => {
+      value = value >= 95 ? 30 : value + 5;
+      setSyncProgress(value);
+    }, 500);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [syncingId]);
+
+  React.useEffect(() => {
+    if (!pollingRun) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const params = syncingId ? `?mailboxId=${encodeURIComponent(syncingId)}` : "";
+        const res = await fetch(`/api/sync/status${params}`);
+        const j = await res.json().catch(() => null);
+        if (!res.ok || !j?.run) {
+          if (!cancelled) {
+            setActiveRun(null);
+            setPollingRun(false);
+          }
+          return;
+        }
+        const run = j.run as ActiveSyncRun;
+        if (!cancelled) {
+          setActiveRun({
+            id: run.id,
+            mode: run.mode,
+            status: run.status,
+            stage: run.stage,
+            importedCount: Number(run.importedCount || 0),
+            startedAt: Number(run.startedAt || Date.now()),
+            finishedAt: run.finishedAt ? Number(run.finishedAt) : undefined,
+            error: run.error,
+          });
+          if (
+            run.status === "done" ||
+            run.status === "error" ||
+            run.status === "paused" ||
+            run.status === "needs_reauth"
+          ) {
+            setPollingRun(false);
+            setSyncingId(null);
+            mutate();
+          }
+        }
+      } catch {
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [pollingRun, mutate, syncingId]);
 
   if (loading || !user) {
     return null;
@@ -41,7 +123,31 @@ export default function ConnectionsSettingsPage() {
   };
 
   const syncNow = async (id: string) => {
+    setSyncingId(id);
     await setActive(id);
+    try {
+      const startRes = await fetch("/api/sync/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "quick", mailboxId: id }),
+      });
+      const startJson = await startRes.json().catch(() => null);
+      if (startRes.ok && startJson?.run) {
+        const run = startJson.run as ActiveSyncRun;
+        setActiveRun({
+          id: run.id,
+          mode: run.mode,
+          status: run.status,
+          stage: run.stage,
+          importedCount: Number(run.importedCount || 0),
+          startedAt: Number(run.startedAt || Date.now()),
+          finishedAt: run.finishedAt ? Number(run.finishedAt) : undefined,
+          error: run.error,
+        });
+        setPollingRun(true);
+      }
+    } catch {
+    }
     const res = await fetch("/api/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -50,6 +156,7 @@ export default function ConnectionsSettingsPage() {
     if (res.ok) {
       await mutate();
     }
+    setSyncingId(null);
   };
 
   const reconnectUrl = (provider: string) => {
@@ -184,11 +291,44 @@ export default function ConnectionsSettingsPage() {
                     Make primary (merged)
                   </Button>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" onClick={() => syncNow(m.id)}>
-                      Sync now
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <Button size="sm" onClick={() => syncNow(m.id)} disabled={syncingId === m.id}>
+                      {syncingId === m.id ? "Syncing…" : "Sync now"}
                     </Button>
+                    {syncingId === m.id && (
+                      <div className="space-y-1 text-[11px] text-muted-foreground">
+                        <Progress value={syncProgress || 10} />
+                        <div className="flex justify-between gap-2">
+                          <span>Sync in progress…</span>
+                        </div>
+                      </div>
+                    )}
+                    {activeRun && (
+                      <div className="space-y-1 text-[11px] text-muted-foreground">
+                        <p>
+                          Status:{" "}
+                          <span className="font-semibold capitalize">
+                            {activeRun.status}
+                          </span>{" "}
+                          • Stage:{" "}
+                          <span className="font-semibold capitalize">
+                            {activeRun.stage}
+                          </span>
+                        </p>
+                        <p>
+                          Messages processed:{" "}
+                          <span className="font-semibold">
+                            {activeRun.importedCount}
+                          </span>
+                        </p>
+                        {activeRun.status === "error" && activeRun.error && (
+                          <p className="text-xs text-destructive">
+                            Error: {activeRun.error}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">

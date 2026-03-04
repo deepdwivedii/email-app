@@ -40,3 +40,5 @@ next-env.d.ts
 *.tar
 *.gz
 node_modules
+# Local Netlify folder
+.netlify

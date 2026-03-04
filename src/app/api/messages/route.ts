@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ messages: [] }, { status: 200 });
   }
 
-  const mailboxIds = mailboxes.map((m: any) => m.id as string);
+  const mailboxIds = mailboxes.map(m => m.id as string);
   const messageClient = await messagesTable();
   const { data: rows, error: msgError, count } = await messageClient
     .select('*', { count: 'exact' })
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const messages = (rows ?? []).map((m: any) => {
+  const messages = (rows ?? []).map(m => {
     const meta = mailboxMap.get(m.mailboxid as string);
     return {
       id: m.id as string,
@@ -60,6 +60,9 @@ export async function GET(req: NextRequest) {
       listUnsubscribePost: m.listunsubscribepost ?? null,
       rootDomain: m.rootdomain ?? null,
       category: m.category ?? null,
+      aiStatus: m.ai_status ?? null,
+      aiProcessedAt: m.ai_processed_at ?? null,
+      aiError: m.ai_error ?? null,
     };
   });
 

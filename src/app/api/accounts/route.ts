@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (category) query = query.eq('category', category);
   if (status) query = query.eq('status', status);
   const { data } = await query.order('lastseenat', { ascending: false }).limit(500);
-  const accounts = (data ?? []).map((row: any) => ({
+  const accounts = (data ?? []).map(row => ({
     id: row.id,
     userId: row.userid,
     emailIdentityId: row.emailidentityid,

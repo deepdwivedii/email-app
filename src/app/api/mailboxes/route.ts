@@ -19,14 +19,15 @@ export async function GET(req: NextRequest) {
   const clientIdM = process.env.MS_OAUTH_CLIENT_ID as string | undefined;
   const clientSecretM = process.env.MS_OAUTH_CLIENT_SECRET as string | undefined;
 
-  const enriched: Array<{ id: string; provider: 'gmail'|'outlook'; email: string; displayName?: string; connectedAt: number; lastSyncAt?: number; health: 'active'|'error'; statusText?: string; isActive: boolean }> = await Promise.all((mailboxes ?? []).map(async (row: any) => {
+  const enriched: Array<{ id: string; provider: 'gmail'|'outlook'; email: string; displayName?: string; connectedAt: number; lastSyncAt?: number; health: 'active'|'error'; statusText?: string; isActive: boolean }> =
+    await Promise.all((mailboxes ?? []).map(async row => {
     const mb = {
       id: row.id as string,
       provider: row.provider as 'gmail'|'outlook',
       email: row.email as string,
       tokenBlobEncrypted: row.tokenblobencrypted as string,
       connectedAt: Number(row.connectedat) as number,
-      lastSyncAt: row.lastsyncat ? Number(row.lastsyncat) : undefined,
+      lastSyncAt: row.lastsyncat ? Number(row.lastsyncat as number) : undefined,
       displayName: row.displayname as string | undefined,
     };
     let health: 'active' | 'error' = 'active';

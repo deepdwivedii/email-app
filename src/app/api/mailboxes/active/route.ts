@@ -4,14 +4,16 @@ import { mailboxesTable } from '@/lib/server/db';
 
 export async function POST(req: NextRequest) {
   try {
-    const { mailboxId, mode } = await req.json();
+    const body = await req.json() as { mailboxId?: string; mode?: string };
+    const mailboxId = body.mailboxId;
+    const mode = body.mode;
     if (typeof mailboxId !== 'string') {
       return NextResponse.json({ error: 'Invalid mailboxId' }, { status: 400 });
     }
     const userId = await getUserId(req);
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const { data: mbs } = await (await mailboxesTable()).select('*').eq('id', mailboxId).limit(1);
-    const mb = mbs && (mbs[0] as any);
+    const mb = mbs && mbs[0] as { userid: string } | null;
     if (!mb || mb.userid !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     const isProduction = req.nextUrl.origin.startsWith('https://');
     const resp = NextResponse.json({ ok: true });

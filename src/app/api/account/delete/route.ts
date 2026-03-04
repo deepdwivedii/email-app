@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mailboxesTable, messagesTable, inventoryTable, accountsTable, accountEvidenceTable, tasksTable, actionLogsTable } from '@/lib/server/db';
 import { getUserId } from '@/lib/server/auth';
 
-async function deleteTableByUser(tablePromise: Promise<any>, userId: string, field: string = 'userid') {
-  const table = await tablePromise;
+async function deleteTableByUser(tablePromise: Promise<unknown>, userId: string, field: string = 'userid') {
+  const table = await tablePromise as { delete: () => { eq: (f: string, v: string) => Promise<unknown> } };
   await table.delete().eq(field, userId);
 }
 

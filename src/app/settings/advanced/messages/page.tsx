@@ -37,6 +37,9 @@ type RawMessage = {
   listUnsubscribePost: string | null;
   rootDomain: string | null;
   category: string | null;
+  aiStatus: string | null;
+  aiProcessedAt: number | null;
+  aiError: string | null;
 };
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -109,6 +112,7 @@ export default function AdvancedMessagesPage() {
                       <TableHead>Subject</TableHead>
                       <TableHead>Domain</TableHead>
                       <TableHead>Category</TableHead>
+                      <TableHead>AI</TableHead>
                       <TableHead>Received</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -144,6 +148,24 @@ export default function AdvancedMessagesPage() {
                             </Badge>
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {m.aiStatus ? (
+                            <Badge
+                              variant={
+                                m.aiStatus === "done"
+                                  ? "default"
+                                  : m.aiStatus === "error"
+                                  ? "destructive"
+                                  : "outline"
+                              }
+                              className="text-[10px] sm:text-xs uppercase tracking-wide"
+                            >
+                              {m.aiStatus}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Not queued</span>
                           )}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-xs sm:text-sm">
@@ -189,4 +211,3 @@ export default function AdvancedMessagesPage() {
     </div>
   );
 }
-

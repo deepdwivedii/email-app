@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     .eq('userid', userId)
     .order('createdat', { ascending: false })
     .limit(200);
-  const tasks = (data ?? []).map((t: any) => ({
+  const tasks = (data ?? []).map(t => ({
     id: t.id,
     userId: t.userid,
     accountId: t.accountid ?? undefined,

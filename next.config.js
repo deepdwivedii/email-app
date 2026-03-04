@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -29,9 +28,7 @@ const nextConfig = {
       },
     ],
   },
-  // Allow cross-origin requests from the development environment.
-  // This is necessary for the app to run in some preview environments.
-  // https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+  serverExternalPackages: ['@supabase/supabase-js', '@supabase/ssr'],
   ...(process.env.NODE_ENV === 'development'
     ? {
         allowedDevOrigins: [

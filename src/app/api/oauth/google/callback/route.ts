@@ -30,11 +30,9 @@ export async function GET(req: NextRequest) {
     if (!clientId || !clientSecret || !code) {
       return NextResponse.redirect(`${origin}/overview?error=oauth_missing_params`);
     }
-    let errCode = 'token_exchange';
     const client = new OAuth2Client({ clientId, clientSecret, redirectUri });
     const { tokens } = await client.getToken(code);
 
-    errCode = 'profile_fetch';
     const accessToken = tokens.access_token as string;
     const profileRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -44,7 +42,6 @@ export async function GET(req: NextRequest) {
     const emailAddress = profile.emailAddress as string;
     const historyId = profile.historyId ? String(profile.historyId) : undefined;
 
-    errCode = 'upsert_mailbox';
     const tokenBlobEncrypted = encryptJson(tokens);
     const saved = await upsertMailbox({
       userId,
@@ -56,7 +53,6 @@ export async function GET(req: NextRequest) {
       lastSyncAt: undefined,
       displayName: alias,
     });
-    errCode = 'upsert_identity';
     await upsertEmailIdentity({
       userId,
       email: emailAddress,
@@ -65,7 +61,6 @@ export async function GET(req: NextRequest) {
       verifiedAt: Date.now(),
     });
 
-    errCode = 'set_cookie_redirect';
     const resp = NextResponse.redirect(`${origin}/overview?connected=gmail`);
     const secure = origin.startsWith('https://');
     // Set mailbox ID cookie to scope sync operations
@@ -78,10 +73,10 @@ export async function GET(req: NextRequest) {
     });
     return resp;
   } catch (e) {
-    const err = e as any;
-    const msg = (err?.message as string) || String(err);
-    const pgCode = err?.code || err?.status || undefined;
-    const details = err?.details || err?.hint || undefined;
+    const err = e as Error & { code?: string; status?: string; details?: string; hint?: string };
+    const msg = err.message || String(e);
+    const pgCode = err.code || err.status || undefined;
+    const details = err.details || err.hint || undefined;
     console.error('Google OAuth callback error', { msg, pgCode, details });
     const coarse = msg.includes('profile') ? 'profile_fetch' : 'token_or_upsert_error';
     const codeParam = encodeURIComponent(pgCode ? `supabase_${pgCode}` : coarse);

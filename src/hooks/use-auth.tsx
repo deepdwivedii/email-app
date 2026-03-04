@@ -20,12 +20,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getUser().then(({ data }) => {
-      if (!mounted) return;
-      setUser(data.user ?? null);
+    if (!supabase) {
+      console.error('Supabase client not initialized; auth is disabled.');
       setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      return;
+    }
+    const client = supabase;
+
+    const initAuth = async () => {
+      try {
+        const { data, error } = await client.auth.getUser();
+        if (!mounted) return;
+        if (error) {
+          console.error('Error loading auth user', error);
+          setUser(null);
+        } else {
+          setUser(data.user ?? null);
+        }
+      } catch (error: any) {
+        console.error('Error loading auth user', error);
+        if (
+          error?.name === 'AuthApiError' &&
+          typeof error.message === 'string' &&
+          error.message.includes('Invalid Refresh Token')
+        ) {
+          try {
+            await client.auth.signOut();
+          } catch (signOutError) {
+            console.error('Error signing out after invalid refresh token', signOutError);
+          }
+        }
+        if (mounted) {
+          setUser(null);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    initAuth();
+
+    const { data: sub } = client.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { GmailIcon, OutlookIcon } from "@/components/icons";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, CheckCircle2 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -19,6 +20,17 @@ type SyncStatus = {
   outlook: number;
   errors: number;
   lastSynced: number;
+};
+
+type ActiveSyncRun = {
+  id: string;
+  mode: "quick" | "full" | "delta";
+  status: "queued" | "running" | "paused" | "done" | "error" | "needs_reauth";
+  stage: "listing" | "fetching" | "upserting" | "aggregating";
+  importedCount: number;
+  startedAt: number;
+  finishedAt?: number;
+  error?: string;
 };
 
 export default function OnboardingPage() {
@@ -56,6 +68,9 @@ export default function OnboardingPage() {
       return null;
     }
   });
+  const [syncProgress, setSyncProgress] = React.useState(0);
+  const [activeRun, setActiveRun] = React.useState<ActiveSyncRun | null>(null);
+  const [pollingRun, setPollingRun] = React.useState(false);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -70,6 +85,68 @@ export default function OnboardingPage() {
   }, [syncStatus]);
 
   React.useEffect(() => {
+    if (!syncing || syncMode !== "full") {
+      setSyncProgress(0);
+      return;
+    }
+    let value = 10;
+    setSyncProgress(value);
+    const id = window.setInterval(() => {
+      value = value >= 95 ? 30 : value + 5;
+      setSyncProgress(value);
+    }, 500);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [syncing, syncMode]);
+
+  React.useEffect(() => {
+    if (!pollingRun) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/sync/status");
+        const j = await res.json().catch(() => null);
+        if (!res.ok || !j?.run) {
+          if (!cancelled) {
+            setActiveRun(null);
+            setPollingRun(false);
+          }
+          return;
+        }
+        const run = j.run as ActiveSyncRun;
+        if (!cancelled) {
+          setActiveRun({
+            id: run.id,
+            mode: run.mode,
+            status: run.status,
+            stage: run.stage,
+            importedCount: Number(run.importedCount || 0),
+            startedAt: Number(run.startedAt || Date.now()),
+            finishedAt: run.finishedAt ? Number(run.finishedAt) : undefined,
+            error: run.error,
+          });
+          if (
+            run.status === "done" ||
+            run.status === "error" ||
+            run.status === "paused" ||
+            run.status === "needs_reauth"
+          ) {
+            setPollingRun(false);
+          }
+        }
+      } catch {
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [pollingRun]);
+
+  React.useEffect(() => {
     if (!loading && user && hasMailbox && hasScan) {
       if (typeof window !== "undefined") {
         window.localStorage.setItem("atlas:onboarded", "true");
@@ -78,9 +155,49 @@ export default function OnboardingPage() {
     }
   }, [loading, user, hasMailbox, hasScan, router]);
 
+  const startBackgroundRun = async () => {
+    try {
+      const res = await fetch("/api/sync/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "full" }),
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.run) {
+        toast({
+          variant: "destructive",
+          title: "Background import not started",
+          description: j?.error || "Please try again.",
+        });
+        return;
+      }
+      const run = j.run as ActiveSyncRun;
+      setActiveRun({
+        id: run.id,
+        mode: run.mode,
+        status: run.status,
+        stage: run.stage,
+        importedCount: Number(run.importedCount || 0),
+        startedAt: Number(run.startedAt || Date.now()),
+        finishedAt: run.finishedAt ? Number(run.finishedAt) : undefined,
+        error: run.error,
+      });
+      setPollingRun(true);
+    } catch (e: any) {
+      toast({
+        variant: "destructive",
+        title: "Background import error",
+        description: e?.message || "Please try again.",
+      });
+    }
+  };
+
   const runSync = async () => {
     setSyncing(true);
     try {
+      if (syncMode === "full") {
+        startBackgroundRun();
+      }
       const res = await fetch("/api/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -295,13 +412,26 @@ export default function OnboardingPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Button onClick={runSync} disabled={syncing || !hasMailbox}>
-                  {syncing
-                    ? "Scanning…"
-                    : syncMode === "quick"
-                    ? "Start Quick scan"
-                    : "Start Full import"}
-                </Button>
+                <div className="flex flex-col gap-2 sm:max-w-sm">
+                  <Button onClick={runSync} disabled={syncing || !hasMailbox}>
+                    {syncing
+                      ? "Scanning…"
+                      : syncMode === "quick"
+                      ? "Start Quick scan"
+                      : "Start Full import"}
+                  </Button>
+                  {syncMode === "full" && (syncing || syncProgress > 0) && (
+                    <div className="space-y-1 text-[11px] text-muted-foreground">
+                      <Progress value={syncProgress || 10} />
+                      <div className="flex justify-between gap-2">
+                        <span>Importing all mail…</span>
+                        <span className="hidden sm:inline">
+                          You can keep using Atlas while this runs.
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {syncStatus && (
                   <div className="space-y-1 text-sm">
                     <p>
@@ -322,6 +452,34 @@ export default function OnboardingPage() {
                         {new Date(syncStatus.lastSynced).toLocaleString()}
                       </span>
                     </p>
+                  </div>
+                )}
+                {activeRun && (
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground">
+                      Background full import
+                    </p>
+                    <p>
+                      Status:{" "}
+                      <span className="font-semibold capitalize">
+                        {activeRun.status}
+                      </span>{" "}
+                      • Stage:{" "}
+                      <span className="font-semibold capitalize">
+                        {activeRun.stage}
+                      </span>
+                    </p>
+                    <p>
+                      Messages processed this run:{" "}
+                      <span className="font-semibold">
+                        {activeRun.importedCount}
+                      </span>
+                    </p>
+                    {activeRun.status === "error" && activeRun.error && (
+                      <p className="text-xs text-destructive">
+                        Error: {activeRun.error}
+                      </p>
+                    )}
                   </div>
                 )}
                 {syncStatus && (

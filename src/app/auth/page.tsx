@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase-client";
 import { useAuth } from "@/hooks/use-auth";
@@ -14,6 +14,30 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 
 export default function AuthPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center px-4">
+          <Card className="w-full max-w-sm">
+            <CardHeader className="flex items-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <CardTitle className="font-headline text-xl">Loading auth…</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription className="text-sm text-muted-foreground">
+                Preparing the sign-in experience.
+              </CardDescription>
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <AuthPageInner />
+    </Suspense>
+  );
+}
+
+function AuthPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
@@ -49,6 +73,9 @@ export default function AuthPage() {
     e.preventDefault();
     setBusy(true);
     try {
+      if (!supabase) {
+        throw new Error("Supabase client not initialized");
+      }
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
     } catch (error: any) {
@@ -65,6 +92,9 @@ export default function AuthPage() {
     setBusy(true);
     try {
       const origin = window.location.origin;
+      if (!supabase) {
+        throw new Error("Supabase client not initialized");
+      }
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: origin },
@@ -89,6 +119,9 @@ export default function AuthPage() {
     setBusy(true);
     try {
       const origin = window.location.origin;
+      if (!supabase) {
+        throw new Error("Supabase client not initialized");
+      }
       await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo: origin },
@@ -108,6 +141,9 @@ export default function AuthPage() {
     setBusy(true);
     try {
       const origin = window.location.origin;
+      if (!supabase) {
+        throw new Error("Supabase client not initialized");
+      }
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -302,4 +338,3 @@ export default function AuthPage() {
     </div>
   );
 }
-

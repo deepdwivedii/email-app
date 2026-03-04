@@ -10,7 +10,6 @@ export async function GET(req: NextRequest) {
     }
 
     const id = `test-${Date.now()}`;
-    // 1. Try Insert
     const { error: insertError } = await (await actionLogsTable()).insert({
       id,
       userid: userId,
@@ -18,7 +17,7 @@ export async function GET(req: NextRequest) {
       executionmode: 'manual',
       status: 'success',
       createdat: Date.now(),
-    } as any);
+    } as unknown);
 
     if (insertError) {
       return NextResponse.json({ 

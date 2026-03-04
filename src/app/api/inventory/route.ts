@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listInventory, messagesTable, type Inventory, type Message } from '@/lib/server/db';
+import { listInventory, messagesTable, type Inventory } from '@/lib/server/db';
 import type { Email } from '@/types';
 import { getUserId } from '@/lib/server/auth';
 
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
         .eq('rootdomain', inv.rootDomain)
         .order('receivedat', { ascending: false })
         .limit(5);
-      emails = (data ?? []).map((m: any) => ({
+      emails = (data ?? []).map(m => ({
         id: m.id,
         from: m.from || '',
         to: m.to || '',

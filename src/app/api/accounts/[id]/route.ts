@@ -2,12 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { accountsTable, accountEvidenceTable, type Account } from '@/lib/server/db';
 import { getUserId } from '@/lib/server/auth';
 
-export async function GET(req: NextRequest, context: unknown) {
-  const params = (context as { params: { id: string } }).params;
+type Params = {
+  params: {
+    id: string;
+  };
+};
+
+export async function GET(req: NextRequest, { params }: Params) {
   const userId = await getUserId(req);
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { data: accs } = await (await accountsTable()).select('*').eq('id', params.id).limit(1);
-  const row = accs && (accs[0] as any);
+  const row = accs && accs[0] as {
+    id: string;
+    userid: string;
+    emailidentityid: string;
+    servicename: string;
+    servicedomain: string;
+    category: Account['category'];
+    confidencescore: number | null;
+    explanation: string;
+    firstseenat: number;
+    lastseenat: number;
+    status: Account['status'];
+  };
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (row.userid !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const account: Account = {
@@ -28,7 +45,7 @@ export async function GET(req: NextRequest, context: unknown) {
     .eq('accountid', params.id)
     .order('createdat', { ascending: false })
     .limit(100);
-  const evidence = (evRows ?? []).map((r: any) => ({
+  const evidence = (evRows ?? []).map(r => ({
     id: r.id,
     userId: r.userid,
     accountId: r.accountid,
