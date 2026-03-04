@@ -45,6 +45,13 @@ async function initFromEnv(): Promise<BrowserSupabaseClient | null> {
     new URL(supabaseUrl);
     return createClient(supabaseUrl, supabaseAnonKey);
   } catch {
+    console.error('Supabase env config invalid', {
+      hasUrl: !!supabaseUrl,
+      hasKey: !!supabaseAnonKey,
+      urlLength: supabaseUrl.length,
+      urlStartsWithHttps: supabaseUrl.startsWith('https://'),
+      urlFirstCharCode: supabaseUrl.charCodeAt(0),
+    });
     return null;
   }
 }
@@ -53,13 +60,32 @@ async function initFromServer(): Promise<BrowserSupabaseClient | null> {
   try {
     const res = await fetch('/api/public/supabase-config', { cache: 'no-store' });
     const j = await res.json().catch(() => null);
-    if (!res.ok || !j?.url || !j?.anonKey) return null;
+    if (!res.ok || !j?.url || !j?.anonKey) {
+      console.error('Supabase config fetch failed', {
+        status: res.status,
+        ok: res.ok,
+        hasUrl: !!j?.url,
+        hasKey: !!j?.anonKey,
+      });
+      return null;
+    }
     const url = normalizeSupabaseUrl(String(j.url));
     const anonKey = cleanEnv(String(j.anonKey));
     if (!url || !anonKey) return null;
-    new URL(url);
-    return createClient(url, anonKey);
+    try {
+      new URL(url);
+      return createClient(url, anonKey);
+    } catch {
+      console.error('Supabase server config invalid', {
+        urlLength: url.length,
+        urlStartsWithHttps: url.startsWith('https://'),
+        urlFirstCharCode: url.charCodeAt(0),
+        anonKeyLength: anonKey.length,
+      });
+      return null;
+    }
   } catch {
+    console.error('Supabase config request failed');
     return null;
   }
 }
