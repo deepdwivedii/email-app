@@ -16,6 +16,8 @@ export async function updateSession(request: NextRequest) {
   const normalizeSupabaseUrl = (value: string | undefined) => {
     const cleaned = cleanEnv(value);
     if (!cleaned) return cleaned;
+    const embedded = cleaned.match(/https?:\/\/[^\s'"`]+/i);
+    if (embedded?.[0]) return embedded[0];
     if (/^https?:\/\//i.test(cleaned)) return cleaned;
     if (/^[a-z0-9-]+\.supabase\.co$/i.test(cleaned)) return `https://${cleaned}`;
     return cleaned;
