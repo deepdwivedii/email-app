@@ -12,6 +12,9 @@ const cleanEnv = (value: string | undefined) => {
 const normalizeSupabaseUrl = (value: string | undefined) => {
   const cleaned = cleanEnv(value);
   if (!cleaned) return cleaned;
+  // If the value is a placeholder or masked (e.g. starts with *), ignore it
+  if (cleaned.startsWith('*')) return undefined;
+  
   const embedded = cleaned.match(/https?:\/\/[^\s'"`]+/i);
   if (embedded?.[0]) return embedded[0];
   if (/^https?:\/\//i.test(cleaned)) return cleaned;
@@ -33,16 +36,23 @@ function createClient(url: string, anonKey: string) {
   });
 }
 
+// Helper to filter out invalid env vars
+const getValidEnv = (key: string): string | undefined => {
+  const val = process.env[key];
+  if (!val || val.trim() === '' || val.trim().startsWith('*')) return undefined;
+  return val;
+};
+
 async function initFromEnv(): Promise<BrowserSupabaseClient | null> {
   const supabaseUrl = normalizeSupabaseUrl(
-    (process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
-      (process.env.NEXT_PUBLIC_SUPABASE_DATABASE_URL as string | undefined) ||
+    getValidEnv('NEXT_PUBLIC_SUPABASE_URL') ||
+      getValidEnv('NEXT_PUBLIC_SUPABASE_DATABASE_URL') ||
       "https://mxyimbouftlqkhewffvd.supabase.co"
   );
   const supabaseAnonKey = cleanEnv(
-    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
-      (process.env.SUPABASE_ANON_KEY as string | undefined) ||
-      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined) ||
+    getValidEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
+      getValidEnv('SUPABASE_ANON_KEY') ||
+      getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY') ||
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eWltYm91ZnRscWtoZXdmZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDE4MjQsImV4cCI6MjA4ODAxNzgyNH0.wJR2wVxAYUf0pX86fBfXzxCAnjBuzo32V2AzFBPQ26o"
   );
 

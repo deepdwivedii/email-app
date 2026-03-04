@@ -12,6 +12,8 @@
     *   `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase Project URL.
     *   `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase Anon Key.
 
+    > **Important**: Ensure these values are entered correctly and NOT as placeholders (like `********************`) or masked values. If you see asterisks in the value field, re-enter the actual URL and Key. The app has fallback logic to handle accidental placeholders, but it's best to set them correctly.
+
     > Note: Do NOT expose `SUPABASE_SERVICE_ROLE_KEY` in Netlify unless you are using it in Edge Functions only, and even then be careful. The client-side app only needs the URL and Anon Key.
 
 ## Supabase Configuration
