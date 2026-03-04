@@ -8,7 +8,15 @@ const cleanEnv = (value: string | undefined) => {
   return trimmed.replace(/^['"`]+|['"`]+$/g, '');
 };
 
-const supabaseUrl = cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined);
+const normalizeSupabaseUrl = (value: string | undefined) => {
+  const cleaned = cleanEnv(value);
+  if (!cleaned) return cleaned;
+  if (/^https?:\/\//i.test(cleaned)) return cleaned;
+  if (/^[a-z0-9-]+\.supabase\.co$/i.test(cleaned)) return `https://${cleaned}`;
+  return cleaned;
+};
+
+const supabaseUrl = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined);
 const supabaseAnonKey = cleanEnv(
   (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
     (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined)
