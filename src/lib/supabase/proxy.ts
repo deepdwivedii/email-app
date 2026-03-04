@@ -6,10 +6,14 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
-  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-  const url = typeof rawUrl === 'string' ? rawUrl.trim() : rawUrl;
-  const rawKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string;
-  const key = typeof rawKey === 'string' ? rawKey.trim() : rawKey;
+  const cleanEnv = (value: string | undefined) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return trimmed.replace(/^['"`]+|['"`]+$/g, '');
+  };
+
+  const url = cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) as string;
+  const key = cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) as string;
 
   const supabase = createServerClient(url, key, {
     cookies: {

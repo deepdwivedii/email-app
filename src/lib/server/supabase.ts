@@ -2,12 +2,17 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 
 export async function getServerSupabase() {
-  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-  const url = typeof rawUrl === 'string' ? rawUrl.trim() : rawUrl;
-  const rawAnon =
-    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string) ||
-    (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string);
-  const anon = typeof rawAnon === 'string' ? rawAnon.trim() : rawAnon;
+  const cleanEnv = (value: string | undefined) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return trimmed.replace(/^['"`]+|['"`]+$/g, '');
+  };
+
+  const url = cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) as string;
+  const anon = cleanEnv(
+    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
+      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined)
+  ) as string;
 
   const cookieStore = await cookies();
   const client = createServerClient(url, anon, {
