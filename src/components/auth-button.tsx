@@ -3,7 +3,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "./ui/button";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase-client";
+import { getSupabaseClient } from "@/lib/supabase-client";
 import { useRouter } from "next/navigation";
 
 export default function AuthButton() {
@@ -11,12 +11,13 @@ export default function AuthButton() {
   const router = useRouter();
 
   const handleSignOut = async () => {
-    if (!supabase) {
+    const client = await getSupabaseClient();
+    if (!client) {
       console.error("Supabase client not initialized; cannot sign out.");
       router.push("/");
       return;
     }
-    await supabase.auth.signOut();
+    await client.auth.signOut();
     router.push('/');
   };
 

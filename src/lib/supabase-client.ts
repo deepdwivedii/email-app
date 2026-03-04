@@ -19,33 +19,65 @@ const normalizeSupabaseUrl = (value: string | undefined) => {
   return cleaned;
 };
 
-const supabaseUrl = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined);
-const supabaseAnonKey = cleanEnv(
-  (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
-    (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined)
-);
+type BrowserSupabaseClient = ReturnType<typeof createBrowserClient>;
 
-let client: ReturnType<typeof createBrowserClient> | null = null;
+let client: BrowserSupabaseClient | null = null;
+let initPromise: Promise<BrowserSupabaseClient | null> | null = null;
 
-if (typeof window !== 'undefined') {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('Supabase env missing or invalid', {
-      hasUrl: !!supabaseUrl,
-      hasKey: !!supabaseAnonKey,
-      supabaseUrl,
-    });
-  } else {
-    try {
-      client = createBrowserClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-        },
-      });
-    } catch (e) {
-      console.error('Failed to initialize Supabase client', e);
-    }
+function createClient(url: string, anonKey: string) {
+  return createBrowserClient(url, anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  });
+}
+
+async function initFromEnv(): Promise<BrowserSupabaseClient | null> {
+  const supabaseUrl = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined);
+  const supabaseAnonKey = cleanEnv(
+    (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
+      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string | undefined)
+  );
+
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+  try {
+    return createClient(supabaseUrl, supabaseAnonKey);
+  } catch (e) {
+    console.error('Failed to initialize Supabase client', e);
+    return null;
   }
 }
 
-export const supabase = client;
+async function initFromServer(): Promise<BrowserSupabaseClient | null> {
+  try {
+    const res = await fetch('/api/public/supabase-config', { cache: 'no-store' });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.url || !j?.anonKey) return null;
+    const url = normalizeSupabaseUrl(String(j.url));
+    const anonKey = cleanEnv(String(j.anonKey));
+    if (!url || !anonKey) return null;
+    return createClient(url, anonKey);
+  } catch (e) {
+    console.error('Failed to load Supabase config', e);
+    return null;
+  }
+}
+
+export function getSupabaseClientSync() {
+  return client;
+}
+
+export async function getSupabaseClient() {
+  if (client) return client;
+  if (typeof window === 'undefined') return null;
+  if (!initPromise) {
+    initPromise = (async () => {
+      const fromEnv = await initFromEnv();
+      if (fromEnv) return fromEnv;
+      return initFromServer();
+    })();
+  }
+  client = await initPromise;
+  return client;
+}

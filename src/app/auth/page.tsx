@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabase-client";
+import { getSupabaseClient } from "@/lib/supabase-client";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,10 +73,11 @@ function AuthPageInner() {
     e.preventDefault();
     setBusy(true);
     try {
-      if (!supabase) {
+      const client = await getSupabaseClient();
+      if (!client) {
         throw new Error("Supabase client not initialized");
       }
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await client.auth.signInWithPassword({ email, password });
       if (error) throw error;
     } catch (error: any) {
       toast({
@@ -92,10 +93,11 @@ function AuthPageInner() {
     setBusy(true);
     try {
       const origin = window.location.origin;
-      if (!supabase) {
+      const client = await getSupabaseClient();
+      if (!client) {
         throw new Error("Supabase client not initialized");
       }
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await client.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: origin },
       });
@@ -119,10 +121,11 @@ function AuthPageInner() {
     setBusy(true);
     try {
       const origin = window.location.origin;
-      if (!supabase) {
+      const client = await getSupabaseClient();
+      if (!client) {
         throw new Error("Supabase client not initialized");
       }
-      await supabase.auth.signInWithOAuth({
+      await client.auth.signInWithOAuth({
         provider,
         options: { redirectTo: origin },
       });
@@ -141,10 +144,11 @@ function AuthPageInner() {
     setBusy(true);
     try {
       const origin = window.location.origin;
-      if (!supabase) {
+      const client = await getSupabaseClient();
+      if (!client) {
         throw new Error("Supabase client not initialized");
       }
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await client.auth.signUp({
         email,
         password,
         options: { emailRedirectTo: origin },

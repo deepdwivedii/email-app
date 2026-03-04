@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { supabase } from '@/lib/supabase-client';
+import { getSupabaseClient } from '@/lib/supabase-client';
 
 interface AuthContextType {
   user: any | null;
@@ -20,14 +20,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let mounted = true;
-    if (!supabase) {
-      console.error('Supabase client not initialized; auth is disabled.');
-      setLoading(false);
-      return;
-    }
-    const client = supabase;
-
     const initAuth = async () => {
+      const client = await getSupabaseClient();
+      if (!mounted) return;
+      if (!client) {
+        console.error('Supabase client not initialized; auth is disabled.');
+        setLoading(false);
+        return;
+      }
+
       try {
         const { data, error } = await client.auth.getUser();
         if (!mounted) return;
@@ -62,13 +63,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initAuth();
 
-    const { data: sub } = client.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    let unsub: (() => void) | null = null;
+    (async () => {
+      const client = await getSupabaseClient();
+      if (!mounted || !client) return;
+      const { data: sub } = client.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      });
+      unsub = () => sub?.subscription.unsubscribe();
+    })();
+
     return () => {
       mounted = false;
-      sub?.subscription.unsubscribe();
+      unsub?.();
     };
   }, []);
 
