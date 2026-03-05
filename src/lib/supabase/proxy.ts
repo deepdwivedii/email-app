@@ -25,21 +25,11 @@ export async function updateSession(request: NextRequest) {
     return cleaned;
   };
 
-  const getValidEnv = (key: string): string | undefined => {
-    const val = process.env[key];
-    if (!val || val.trim() === '' || val.trim().startsWith('*')) return undefined;
-    return val;
-  };
-
   const url = normalizeSupabaseUrl(
-    getValidEnv('NEXT_PUBLIC_SUPABASE_URL') ||
-    getValidEnv('NEXT_PUBLIC_SUPABASE_DATABASE_URL')
+    process.env.SUPABASE_URL ||
+      process.env.SUPABASE_DATABASE_URL
   );
-  const key = cleanEnv(
-    getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY') ||
-      getValidEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
-      getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
-  );
+  const key = cleanEnv(process.env.SUPABASE_ANON_KEY);
 
   if (!url || !key) {
     return supabaseResponse;

@@ -21,22 +21,11 @@ export async function getServerSupabase() {
     return cleaned;
   };
 
-  const getValidEnv = (key: string): string | undefined => {
-    const val = process.env[key];
-    if (!val || val.trim() === '' || val.trim().startsWith('*')) return undefined;
-    return val;
-  };
-
   const url = normalizeSupabaseUrl(
-    getValidEnv('NEXT_PUBLIC_SUPABASE_URL') ||
-      getValidEnv('NEXT_PUBLIC_SUPABASE_DATABASE_URL') ||
-      getValidEnv('SUPABASE_DATABASE_URL')
+    process.env.SUPABASE_URL ||
+      process.env.SUPABASE_DATABASE_URL
   );
-  const anon = cleanEnv(
-    getValidEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
-      getValidEnv('SUPABASE_ANON_KEY') ||
-      getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
-  );
+  const anon = cleanEnv(process.env.SUPABASE_ANON_KEY);
 
   if (!url || !anon) {
     throw new Error('Missing Supabase environment variables');

@@ -204,8 +204,8 @@ You mainly need to:
 Set the following in `.env.local`:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOi...
 ```
 
 The client is initialized in `src/lib/supabase-client.ts`, and sessions are managed on the server using `@supabase/ssr` with Next.js `cookies()` in route handlers (`src/lib/server/supabase.ts`).
@@ -298,8 +298,8 @@ Here is a single template you can fill in:
 
 ```bash
 # Supabase
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_URL=...
+SUPABASE_ANON_KEY=...
 
 # AI
 OPENROUTER_API_KEY=...
@@ -338,7 +338,7 @@ When you’re ready to deploy for real:
   - [ ] Delegated permissions: `Mail.Read`, `offline_access`, `openid`, `email`, `profile`.
   - [ ] Admin consent granted.
   - [ ] `MS_OAUTH_CLIENT_ID`, `MS_OAUTH_CLIENT_SECRET` stored and configured.
-- [ ] Supabase project created; `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` configured.
+- [ ] Supabase project created; `SUPABASE_URL` and `SUPABASE_ANON_KEY` configured.
 - [ ] Supabase Postgres tables created with RLS enforcing per-user access.
 - [ ] `ENCRYPTION_KEY_32B` set identically across local and prod.
 - [ ] Optional: `OPENROUTER_API_KEY` set.

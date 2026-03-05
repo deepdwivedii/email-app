@@ -9,10 +9,10 @@
 2.  **Environment Variables**:
     You must set the following environment variables in your Netlify Site Settings (Site configuration > Environment variables):
 
-    *   `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase Project URL.
-    *   `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase Anon Key.
+    *   `SUPABASE_URL`: Your Supabase Project URL.
+    *   `SUPABASE_ANON_KEY`: Your Supabase Anon Key.
 
-    > **Important**: Ensure these values are entered correctly and NOT as placeholders (like `********************`) or masked values. If you see asterisks in the value field, re-enter the actual URL and Key. The app has fallback logic to handle accidental placeholders, but it's best to set them correctly.
+    > **Important**: Do not use `NEXT_PUBLIC_*` for Supabase on Netlify. Next.js will embed those values into client bundles, and Netlify can block deploys as “exposed secrets”. This app fetches the Supabase URL/key from a server route at runtime, so only `SUPABASE_URL` and `SUPABASE_ANON_KEY` are needed.
 
     > Note: Do NOT expose `SUPABASE_SERVICE_ROLE_KEY` in Netlify unless you are using it in Edge Functions only, and even then be careful. The client-side app only needs the URL and Anon Key.
 
@@ -36,4 +36,4 @@
 ## Local Development
 
 *   Run `npm run dev` to start the local server.
-*   Ensure `.env.local` contains `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+*   Ensure `.env.local` contains `SUPABASE_URL` and `SUPABASE_ANON_KEY`.

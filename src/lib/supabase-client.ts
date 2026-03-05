@@ -35,39 +35,6 @@ function createClient(url: string, anonKey: string) {
   });
 }
 
-const getValidEnv = (key: string): string | undefined => {
-  const val = process.env[key];
-  if (!val || val.trim() === '' || val.trim().startsWith('*')) return undefined;
-  return val;
-};
-
-async function initFromEnv(): Promise<BrowserSupabaseClient | null> {
-  const supabaseUrl = normalizeSupabaseUrl(
-    getValidEnv('NEXT_PUBLIC_SUPABASE_URL') ||
-      getValidEnv('NEXT_PUBLIC_SUPABASE_DATABASE_URL')
-  );
-  const supabaseAnonKey = cleanEnv(
-    getValidEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
-      getValidEnv('SUPABASE_ANON_KEY') ||
-      getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
-  );
-
-  if (!supabaseUrl || !supabaseAnonKey) return null;
-  try {
-    new URL(supabaseUrl);
-    return createClient(supabaseUrl, supabaseAnonKey);
-  } catch {
-    console.error('Supabase env config invalid', {
-      hasUrl: !!supabaseUrl,
-      hasKey: !!supabaseAnonKey,
-      urlLength: supabaseUrl.length,
-      urlStartsWithHttps: supabaseUrl.startsWith('https://'),
-      urlFirstCharCode: supabaseUrl.charCodeAt(0),
-    });
-    return null;
-  }
-}
-
 async function initFromServer(): Promise<BrowserSupabaseClient | null> {
   try {
     const res = await fetch('/api/public/supabase-config', { cache: 'no-store' });
@@ -111,8 +78,6 @@ export async function getSupabaseClient() {
   if (typeof window === 'undefined') return null;
   if (!initPromise) {
     initPromise = (async () => {
-      const fromEnv = await initFromEnv();
-      if (fromEnv) return fromEnv;
       return initFromServer();
     })();
   }
