@@ -37,13 +37,9 @@ export async function updateSession(request: NextRequest) {
     getFirstEnv([
       'SUPABASE_URL',
       'SUPABASE_DATABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_DATABASE_URL',
     ])
   );
-  const key = cleanEnv(
-    getFirstEnv(['SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'])
-  );
+  const key = cleanEnv(getFirstEnv(['SUPABASE_ANON_KEY']));
 
   if (!url || !key) {
     return supabaseResponse;

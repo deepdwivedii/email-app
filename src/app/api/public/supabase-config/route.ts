@@ -34,13 +34,9 @@ export async function GET(req: NextRequest) {
     getFirstEnv([
       'SUPABASE_URL',
       'SUPABASE_DATABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_DATABASE_URL',
     ])
   );
-  const anonKey = cleanEnv(
-    getFirstEnv(['SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'])
-  );
+  const anonKey = cleanEnv(getFirstEnv(['SUPABASE_ANON_KEY']));
 
   const debug = new URL(req.url).searchParams.get('debug') === '1';
 
@@ -55,10 +51,6 @@ export async function GET(req: NextRequest) {
             SUPABASE_URL: !!process.env.SUPABASE_URL,
             SUPABASE_DATABASE_URL: !!process.env.SUPABASE_DATABASE_URL,
             SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
-            NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-            NEXT_PUBLIC_SUPABASE_DATABASE_URL:
-              !!process.env.NEXT_PUBLIC_SUPABASE_DATABASE_URL,
-            NEXT_PUBLIC_SUPABASE_ANON_KEY: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
           },
           runtime:
             (process.env.NEXT_RUNTIME as string | undefined) ||

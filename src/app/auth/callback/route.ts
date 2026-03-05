@@ -28,13 +28,8 @@ export async function GET(request: Request) {
     const supabaseUrl = getFirstEnv([
       'SUPABASE_URL',
       'SUPABASE_DATABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_DATABASE_URL',
     ]);
-    const supabaseAnonKey = getFirstEnv([
-      'SUPABASE_ANON_KEY',
-      'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-    ]);
+    const supabaseAnonKey = getFirstEnv(['SUPABASE_ANON_KEY']);
 
     if (!supabaseUrl || !supabaseAnonKey) {
       return NextResponse.redirect(`${origin}/auth/auth-code-error`);

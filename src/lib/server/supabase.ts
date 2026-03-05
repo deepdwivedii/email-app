@@ -33,13 +33,9 @@ export async function getServerSupabase() {
     getFirstEnv([
       'SUPABASE_URL',
       'SUPABASE_DATABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_DATABASE_URL',
     ])
   );
-  const anon = cleanEnv(
-    getFirstEnv(['SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'])
-  );
+  const anon = cleanEnv(getFirstEnv(['SUPABASE_ANON_KEY']));
 
   if (!url || !anon) {
     throw new Error('Missing Supabase environment variables');
