@@ -32,17 +32,13 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch {}
-  const currentMailboxId = req.cookies.get('mb')?.value;
-
-  if (!currentMailboxId) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
 
   const sessionUserId = await getUserId(req);
   if (!sessionUserId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const currentMailboxId = req.cookies.get('mb')?.value;
   let targetMailboxes: Mailbox[] = [];
 
   if (currentMailboxId) {
