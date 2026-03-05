@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+
 const cleanEnv = (value: string | undefined) => {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim().replace(/\s+#.*$/, '');
@@ -29,6 +31,26 @@ export async function GET(req: NextRequest) {
   const debug = new URL(req.url).searchParams.get('debug') === '1';
 
   if (!url || !anonKey) {
+    if (debug) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Missing Supabase env',
+          expectedKeys: ['SUPABASE_URL', 'SUPABASE_DATABASE_URL', 'SUPABASE_ANON_KEY'],
+          present: {
+            SUPABASE_URL: !!process.env.SUPABASE_URL,
+            SUPABASE_DATABASE_URL: !!process.env.SUPABASE_DATABASE_URL,
+            SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+          },
+          runtime:
+            (process.env.NEXT_RUNTIME as string | undefined) ||
+            (typeof (globalThis as { EdgeRuntime?: unknown }).EdgeRuntime !== 'undefined'
+              ? 'edge'
+              : 'nodejs'),
+        },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       {
         error: 'Missing Supabase env',
