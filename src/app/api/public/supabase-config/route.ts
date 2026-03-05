@@ -9,6 +9,14 @@ const cleanEnv = (value: string | undefined) => {
   return printable.replace(/^['"`]+|['"`]+$/g, '');
 };
 
+const getFirstEnv = (keys: string[]) => {
+  for (const key of keys) {
+    const value = cleanEnv(process.env[key]);
+    if (value && !value.startsWith('*')) return value;
+  }
+  return undefined;
+};
+
 const normalizeSupabaseUrl = (value: string | undefined) => {
   const cleaned = cleanEnv(value);
   if (!cleaned) return cleaned;
@@ -23,10 +31,16 @@ const normalizeSupabaseUrl = (value: string | undefined) => {
 
 export async function GET(req: NextRequest) {
   const url = normalizeSupabaseUrl(
-    process.env.SUPABASE_URL ||
-      process.env.SUPABASE_DATABASE_URL
+    getFirstEnv([
+      'SUPABASE_URL',
+      'SUPABASE_DATABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_DATABASE_URL',
+    ])
   );
-  const anonKey = cleanEnv(process.env.SUPABASE_ANON_KEY);
+  const anonKey = cleanEnv(
+    getFirstEnv(['SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'])
+  );
 
   const debug = new URL(req.url).searchParams.get('debug') === '1';
 
@@ -41,6 +55,10 @@ export async function GET(req: NextRequest) {
             SUPABASE_URL: !!process.env.SUPABASE_URL,
             SUPABASE_DATABASE_URL: !!process.env.SUPABASE_DATABASE_URL,
             SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+            NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+            NEXT_PUBLIC_SUPABASE_DATABASE_URL:
+              !!process.env.NEXT_PUBLIC_SUPABASE_DATABASE_URL,
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
           },
           runtime:
             (process.env.NEXT_RUNTIME as string | undefined) ||

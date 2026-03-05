@@ -9,6 +9,14 @@ export async function getServerSupabase() {
     return printable.replace(/^['"`]+|['"`]+$/g, '');
   };
 
+  const getFirstEnv = (keys: string[]) => {
+    for (const key of keys) {
+      const value = cleanEnv(process.env[key]);
+      if (value && !value.startsWith('*')) return value;
+    }
+    return undefined;
+  };
+
   const normalizeSupabaseUrl = (value: string | undefined) => {
     const cleaned = cleanEnv(value);
     if (!cleaned) return cleaned;
@@ -22,10 +30,16 @@ export async function getServerSupabase() {
   };
 
   const url = normalizeSupabaseUrl(
-    process.env.SUPABASE_URL ||
-      process.env.SUPABASE_DATABASE_URL
+    getFirstEnv([
+      'SUPABASE_URL',
+      'SUPABASE_DATABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_DATABASE_URL',
+    ])
   );
-  const anon = cleanEnv(process.env.SUPABASE_ANON_KEY);
+  const anon = cleanEnv(
+    getFirstEnv(['SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'])
+  );
 
   if (!url || !anon) {
     throw new Error('Missing Supabase environment variables');

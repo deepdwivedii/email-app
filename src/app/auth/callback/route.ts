@@ -11,9 +11,30 @@ export async function GET(request: Request) {
 
   if (code) {
     const cookieStore = await cookies();
-    const supabaseUrl =
-      process.env.SUPABASE_URL || process.env.SUPABASE_DATABASE_URL;
-    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+    const cleanEnv = (value: string | undefined) => {
+      if (typeof value !== 'string') return value;
+      const trimmed = value.trim().replace(/\s+#.*$/, '');
+      const printable = trimmed.replace(/[^\x21-\x7E]/g, '');
+      return printable.replace(/^['"`]+|['"`]+$/g, '');
+    };
+    const getFirstEnv = (keys: string[]) => {
+      for (const key of keys) {
+        const value = cleanEnv(process.env[key]);
+        if (value && !value.startsWith('*')) return value;
+      }
+      return undefined;
+    };
+
+    const supabaseUrl = getFirstEnv([
+      'SUPABASE_URL',
+      'SUPABASE_DATABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_DATABASE_URL',
+    ]);
+    const supabaseAnonKey = getFirstEnv([
+      'SUPABASE_ANON_KEY',
+      'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+    ]);
 
     if (!supabaseUrl || !supabaseAnonKey) {
       return NextResponse.redirect(`${origin}/auth/auth-code-error`);

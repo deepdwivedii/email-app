@@ -13,6 +13,14 @@ export async function updateSession(request: NextRequest) {
     return printable.replace(/^['"`]+|['"`]+$/g, '');
   };
 
+  const getFirstEnv = (keys: string[]) => {
+    for (const key of keys) {
+      const value = cleanEnv(process.env[key]);
+      if (value && !value.startsWith('*')) return value;
+    }
+    return undefined;
+  };
+
   const normalizeSupabaseUrl = (value: string | undefined) => {
     const cleaned = cleanEnv(value);
     if (!cleaned) return cleaned;
@@ -26,10 +34,16 @@ export async function updateSession(request: NextRequest) {
   };
 
   const url = normalizeSupabaseUrl(
-    process.env.SUPABASE_URL ||
-      process.env.SUPABASE_DATABASE_URL
+    getFirstEnv([
+      'SUPABASE_URL',
+      'SUPABASE_DATABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_DATABASE_URL',
+    ])
   );
-  const key = cleanEnv(process.env.SUPABASE_ANON_KEY);
+  const key = cleanEnv(
+    getFirstEnv(['SUPABASE_ANON_KEY', 'NEXT_PUBLIC_SUPABASE_ANON_KEY'])
+  );
 
   if (!url || !key) {
     return supabaseResponse;
