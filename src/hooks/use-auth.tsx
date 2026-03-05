@@ -30,16 +30,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       try {
-        const { data, error } = await client.auth.getUser();
+        const { data, error } = await client.auth.getSession();
         if (!mounted) return;
         if (error) {
-          console.error('Error loading auth user', error);
           setUser(null);
         } else {
-          setUser(data.user ?? null);
+          setUser(data.session?.user ?? null);
         }
       } catch (error: any) {
-        console.error('Error loading auth user', error);
+        if (
+          error?.name !== 'AuthSessionMissingError' &&
+          !(typeof error?.message === 'string' && error.message.includes('Auth session missing'))
+        ) {
+          console.error('Error loading auth user', error);
+        }
         if (
           error?.name === 'AuthApiError' &&
           typeof error.message === 'string' &&
