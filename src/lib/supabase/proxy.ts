@@ -16,7 +16,6 @@ export async function updateSession(request: NextRequest) {
   const normalizeSupabaseUrl = (value: string | undefined) => {
     const cleaned = cleanEnv(value);
     if (!cleaned) return cleaned;
-    // If the value is a placeholder or masked (e.g. starts with *), ignore it
     if (cleaned.startsWith('*')) return undefined;
 
     const embedded = cleaned.match(/https?:\/\/[^\s'"`]+/i);
@@ -34,15 +33,17 @@ export async function updateSession(request: NextRequest) {
 
   const url = normalizeSupabaseUrl(
     getValidEnv('NEXT_PUBLIC_SUPABASE_URL') ||
-    getValidEnv('NEXT_PUBLIC_SUPABASE_DATABASE_URL') ||
-    "https://mxyimbouftlqkhewffvd.supabase.co"
-  ) as string;
+    getValidEnv('NEXT_PUBLIC_SUPABASE_DATABASE_URL')
+  );
   const key = cleanEnv(
     getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY') ||
       getValidEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
-      getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY') ||
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eWltYm91ZnRscWtoZXdmZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDE4MjQsImV4cCI6MjA4ODAxNzgyNH0.wJR2wVxAYUf0pX86fBfXzxCAnjBuzo32V2AzFBPQ26o"
-  ) as string;
+      getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
+  );
+
+  if (!url || !key) {
+    return supabaseResponse;
+  }
 
   const supabase = createServerClient(url, key, {
     cookies: {

@@ -12,9 +12,8 @@ export async function getServerSupabase() {
   const normalizeSupabaseUrl = (value: string | undefined) => {
     const cleaned = cleanEnv(value);
     if (!cleaned) return cleaned;
-    // If the value is a placeholder or masked (e.g. starts with *), ignore it
     if (cleaned.startsWith('*')) return undefined;
-    
+
     const embedded = cleaned.match(/https?:\/\/[^\s'"`]+/i);
     if (embedded?.[0]) return embedded[0];
     if (/^https?:\/\//i.test(cleaned)) return cleaned;
@@ -31,15 +30,17 @@ export async function getServerSupabase() {
   const url = normalizeSupabaseUrl(
     getValidEnv('NEXT_PUBLIC_SUPABASE_URL') ||
       getValidEnv('NEXT_PUBLIC_SUPABASE_DATABASE_URL') ||
-      getValidEnv('SUPABASE_DATABASE_URL') ||
-      "https://mxyimbouftlqkhewffvd.supabase.co"
-  ) as string;
+      getValidEnv('SUPABASE_DATABASE_URL')
+  );
   const anon = cleanEnv(
     getValidEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
       getValidEnv('SUPABASE_ANON_KEY') ||
-      getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY') ||
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eWltYm91ZnRscWtoZXdmZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDE4MjQsImV4cCI6MjA4ODAxNzgyNH0.wJR2wVxAYUf0pX86fBfXzxCAnjBuzo32V2AzFBPQ26o"
-  ) as string;
+      getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
+  );
+
+  if (!url || !anon) {
+    throw new Error('Missing Supabase environment variables');
+  }
 
   const cookieStore = await cookies();
   const client = createServerClient(url, anon, {
@@ -47,15 +48,13 @@ export async function getServerSupabase() {
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
         try {
           cookiesToSet.forEach(({ name, value, options }) =>
             cookieStore.set(name, value, options)
           );
-        } catch {
-          // The `setAll` method was called from a Server Component.
-          // This can be ignored if you have middleware refreshing
-          // user sessions.
+        } catch (error) {
+          void error;
         }
       },
     },

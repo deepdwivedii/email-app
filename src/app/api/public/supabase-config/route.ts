@@ -8,12 +8,11 @@ const cleanEnv = (value: string | undefined) => {
 };
 
 const normalizeSupabaseUrl = (value: string | undefined) => {
-    const cleaned = cleanEnv(value);
-    if (!cleaned) return cleaned;
-    // If the value is a placeholder or masked (e.g. starts with *), ignore it
-    if (cleaned.startsWith('*')) return undefined;
+  const cleaned = cleanEnv(value);
+  if (!cleaned) return cleaned;
+  if (cleaned.startsWith('*')) return undefined;
 
-    const embedded = cleaned.match(/https?:\/\/[^\s'"`]+/i);
+  const embedded = cleaned.match(/https?:\/\/[^\s'"`]+/i);
   if (embedded?.[0]) return embedded[0];
   if (/^https?:\/\//i.test(cleaned)) return cleaned;
   if (/^[a-z0-9-]+\.supabase\.co$/i.test(cleaned)) return `https://${cleaned}`;
@@ -30,14 +29,12 @@ export async function GET(req: NextRequest) {
   const url = normalizeSupabaseUrl(
     getValidEnv('NEXT_PUBLIC_SUPABASE_URL') ||
       getValidEnv('NEXT_PUBLIC_SUPABASE_DATABASE_URL') ||
-      getValidEnv('SUPABASE_DATABASE_URL') ||
-      "https://mxyimbouftlqkhewffvd.supabase.co"
+      getValidEnv('SUPABASE_DATABASE_URL')
   );
   const anonKey = cleanEnv(
     getValidEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
       getValidEnv('SUPABASE_ANON_KEY') ||
-      getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY') ||
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14eWltYm91ZnRscWtoZXdmZnZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NDE4MjQsImV4cCI6MjA4ODAxNzgyNH0.wJR2wVxAYUf0pX86fBfXzxCAnjBuzo32V2AzFBPQ26o"
+      getValidEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY')
   );
 
   const debug = new URL(req.url).searchParams.get('debug') === '1';
