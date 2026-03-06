@@ -1,4 +1,5 @@
 import { accountsTable, accountEvidenceTable, serviceAliasesTable, type Account, type AccountEvidence } from '@/lib/server/db';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 type InferInput = {
   userId: string;
@@ -16,16 +17,16 @@ type InferInput = {
   signals: Record<string, unknown>;
 };
 
-async function resolveAlias(raw: string) {
+async function resolveAlias(raw: string, client?: SupabaseClient) {
   try {
-    const { data } = await (await serviceAliasesTable()).select('*').eq('id', raw).limit(1);
+    const { data } = await (await serviceAliasesTable(client)).select('*').eq('id', raw).limit(1);
     const row = data && (data[0] as Record<string, unknown>);
     if (row?.canonical) return String(row.canonical).toLowerCase();
   } catch {}
   return null;
 }
 
-async function canonicalServiceDomain(rootDomain?: string, serviceDomain?: string) {
+async function canonicalServiceDomain(rootDomain?: string, serviceDomain?: string, client?: SupabaseClient) {
   const raw = (serviceDomain || rootDomain || '').toLowerCase();
   const aliases: Record<string, string> = {
     'instagrammail.com': 'instagram.com',
@@ -42,7 +43,7 @@ async function canonicalServiceDomain(rootDomain?: string, serviceDomain?: strin
     const tail2 = parts.slice(-2).join('.');
     if (aliases[tail2]) return aliases[tail2];
   }
-  const dynamic = await resolveAlias(raw);
+  const dynamic = await resolveAlias(raw, client);
   return dynamic || raw;
 }
 
@@ -58,8 +59,8 @@ function defaultServiceName(domain: string) {
   return domain.split('.').slice(-2).join('.');
 }
 
-export async function recordEvidenceAndInfer(input: InferInput) {
-  const domain = await canonicalServiceDomain(input.rootDomain, input.serviceDomain);
+export async function recordEvidenceAndInfer(input: InferInput, client?: SupabaseClient) {
+  const domain = await canonicalServiceDomain(input.rootDomain, input.serviceDomain, client);
   if (!domain) return;
   const accountId = `${input.emailIdentityId}:${domain}`;
   const evidenceId = `${input.messageId}:${input.intent}`;
@@ -76,7 +77,7 @@ export async function recordEvidenceAndInfer(input: InferInput) {
     weight: input.weight,
     createdAt: Date.now(),
   };
-  await (await accountEvidenceTable()).upsert({
+  await (await accountEvidenceTable(client)).upsert({
     id: ev.id,
     userid: ev.userId,
     accountid: ev.accountId,
@@ -89,7 +90,7 @@ export async function recordEvidenceAndInfer(input: InferInput) {
     createdat: ev.createdAt,
   } as any, { onConflict: 'id' });
 
-  const { data: existingRows } = await (await accountsTable()).select('*').eq('id', accountId).limit(1);
+  const { data: existingRows } = await (await accountsTable(client)).select('*').eq('id', accountId).limit(1);
   const existing = existingRows && existingRows[0] as Account | undefined;
   const explanation = buildExplanation(input.intent, input.signals, domain);
   const evidenceType = mapIntentToEvidenceType(input.intent);
@@ -119,7 +120,7 @@ export async function recordEvidenceAndInfer(input: InferInput) {
 
   if (!existing) {
     if (strongEvidence || input.weight >= createThreshold) {
-      await (await accountsTable()).upsert({
+      await (await accountsTable(client)).upsert({
         id: base.id!,
         userid: base.userId!,
         emailidentityid: base.emailIdentityId!,
@@ -135,7 +136,7 @@ export async function recordEvidenceAndInfer(input: InferInput) {
     } else {
       // Create account with low confidence if not strong evidence, but still track it
       if (input.weight > 0.4) {
-          await (await accountsTable()).upsert({
+          await (await accountsTable(client)).upsert({
             id: base.id!,
             userid: base.userId!,
             emailidentityid: base.emailIdentityId!,
@@ -158,7 +159,7 @@ export async function recordEvidenceAndInfer(input: InferInput) {
     const typeFactor = strongEvidence ? 0.2 : evidenceType === 'newsletter' ? 0.02 : 0.08;
     const increment = Math.max(0.01, input.weight * (recencyFactor + typeFactor));
     const confidenceScore = Math.min(1, (acc.confidenceScore || 0) + increment);
-    await (await accountsTable()).update({
+    await (await accountsTable(client)).update({
       userid: base.userId!,
       emailidentityid: base.emailIdentityId!,
       servicename: base.serviceName!,

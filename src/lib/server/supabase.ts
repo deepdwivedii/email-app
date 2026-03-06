@@ -60,3 +60,21 @@ export async function getServerSupabase() {
   });
   return client;
 }
+
+export async function getServiceSupabase() {
+  const url = process.env.SUPABASE_URL || process.env.SUPABASE_DATABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceKey) {
+    throw new Error('Missing Supabase service environment variables');
+  }
+
+  // Create a client with the service role key, bypassing RLS
+  const { createClient } = await import('@supabase/supabase-js');
+  return createClient(url, serviceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}

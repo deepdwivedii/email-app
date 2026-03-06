@@ -12,6 +12,7 @@ import {
 import { fetchWithRetry } from '@/lib/server/fetch';
 import { upsertMessageAndInventory } from '@/lib/server/sync-shared';
 import { getServerSupabase } from '@/lib/server/supabase';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 type GmailBackfillCursor = {
   type: 'gmail_backfill';
@@ -54,7 +55,7 @@ type SyncMetrics = {
 
 const GMAIL_LIST_COST_UNITS = 5;
 const GMAIL_GET_COST_UNITS = 5;
-const GMAIL_BACKFILL_BATCH_GET = 200;
+const GMAIL_BACKFILL_BATCH_GET = 50;
 
 export async function startSyncRun(userId: string, mailboxId: string, mode: SyncRunMode): Promise<SyncRun> {
   const supabase = await getServerSupabase();
@@ -115,8 +116,8 @@ export async function getLatestSyncRun(userId: string, mailboxId: string): Promi
   return mapSyncRunRow(row);
 }
 
-export async function listActiveSyncRuns(): Promise<SyncRun[]> {
-  const supabase = await getServerSupabase();
+export async function listActiveSyncRuns(client?: SupabaseClient): Promise<SyncRun[]> {
+  const supabase = client || await getServerSupabase();
   const { data, error } = await supabase
     .from('sync_runs')
     .select('*')
@@ -161,8 +162,8 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-async function getOrCreateMailboxCursor(mb: Mailbox): Promise<MailboxCursor> {
-  const supabase = await getServerSupabase();
+async function getOrCreateMailboxCursor(mb: Mailbox, client?: SupabaseClient): Promise<MailboxCursor> {
+  const supabase = client || await getServerSupabase();
   const { data, error } = await supabase.from('mailbox_cursors').select('*').eq('mailboxid', mb.id).limit(1);
   if (error) {
     throw error;
@@ -200,8 +201,8 @@ async function getOrCreateMailboxCursor(mb: Mailbox): Promise<MailboxCursor> {
   return cursor;
 }
 
-async function saveMailboxCursor(cursor: MailboxCursor) {
-  const supabase = await getServerSupabase();
+async function saveMailboxCursor(cursor: MailboxCursor, client?: SupabaseClient) {
+  const supabase = client || await getServerSupabase();
   const { error } = await supabase
     .from('mailbox_cursors')
     .upsert(
@@ -220,8 +221,8 @@ async function saveMailboxCursor(cursor: MailboxCursor) {
   }
 }
 
-async function updateSyncRun(run: SyncRun, patch: Partial<SyncRun> & { status?: SyncRunStatus; stage?: SyncRunStage; cursorSnapshot?: SyncMetrics }) {
-  const supabase = await getServerSupabase();
+async function updateSyncRun(run: SyncRun, patch: Partial<SyncRun> & { status?: SyncRunStatus; stage?: SyncRunStage; cursorSnapshot?: SyncMetrics }, client?: SupabaseClient) {
+  const supabase = client || await getServerSupabase();
   const next: SyncRun = { ...run, ...patch };
   const { error } = await supabase
     .from('sync_runs')
@@ -241,12 +242,12 @@ async function updateSyncRun(run: SyncRun, patch: Partial<SyncRun> & { status?: 
   }
 }
 
-export async function syncWorkerTick(maxMailboxesPerCycle = 50): Promise<{ processed: number }> {
-  const runs = await listActiveSyncRuns();
+export async function syncWorkerTick(maxMailboxesPerCycle = 50, client?: SupabaseClient): Promise<{ processed: number }> {
+  const runs = await listActiveSyncRuns(client);
   if (!runs.length) {
     return { processed: 0 };
   }
-  const supabase = await getServerSupabase();
+  const supabase = client || await getServerSupabase();
   const mailboxIds = Array.from(new Set(runs.map(r => r.mailboxId)));
   const limitedMailboxIds = mailboxIds.slice(0, maxMailboxesPerCycle);
   const { data: mbRows, error: mbErr } = await supabase
@@ -264,13 +265,13 @@ export async function syncWorkerTick(maxMailboxesPerCycle = 50): Promise<{ proce
     const mb = mailboxById.get(run.mailboxId);
     if (!mb) continue;
     if (run.status === 'queued') {
-      await updateSyncRun(run, { status: 'running' });
+      await updateSyncRun(run, { status: 'running' }, client);
       run.status = 'running';
     }
     const metrics: SyncMetrics = (run.cursorSnapshot as SyncMetrics) || {};
     try {
       if (mb.provider === 'gmail') {
-        const { imported, metrics: m2, done } = await processGmailRun(mb, run, metrics);
+        const { imported, metrics: m2, done } = await processGmailRun(mb, run, metrics, client);
         run.importedCount += imported;
         const patch: Partial<SyncRun> & { cursorSnapshot: SyncMetrics } = {
           importedCount: run.importedCount,
@@ -280,9 +281,9 @@ export async function syncWorkerTick(maxMailboxesPerCycle = 50): Promise<{ proce
           patch.status = 'done';
           patch.finishedAt = Date.now();
         }
-        await updateSyncRun(run, patch);
+        await updateSyncRun(run, patch, client);
       } else if (mb.provider === 'outlook') {
-        const { imported, metrics: m2, done } = await processOutlookRun(mb, run, metrics);
+        const { imported, metrics: m2, done } = await processOutlookRun(mb, run, metrics, client);
         run.importedCount += imported;
         const patch: Partial<SyncRun> & { cursorSnapshot: SyncMetrics } = {
           importedCount: run.importedCount,
@@ -292,20 +293,20 @@ export async function syncWorkerTick(maxMailboxesPerCycle = 50): Promise<{ proce
           patch.status = 'done';
           patch.finishedAt = Date.now();
         }
-        await updateSyncRun(run, patch);
+        await updateSyncRun(run, patch, client);
       }
       processed++;
     } catch (e: any) {
       await updateSyncRun(run, {
         status: 'error',
         error: e?.message || String(e),
-      });
+      }, client);
     }
   }
   return { processed };
 }
 
-async function processGmailRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics): Promise<{ imported: number; metrics: SyncMetrics; done: boolean }> {
+async function processGmailRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics, client?: SupabaseClient): Promise<{ imported: number; metrics: SyncMetrics; done: boolean }> {
   type GmailTokenBlob = { access_token: string; refresh_token: string };
   const clientId = process.env.GMAIL_OAUTH_CLIENT_ID as string | undefined;
   const clientSecret = process.env.GMAIL_OAUTH_CLIENT_SECRET as string | undefined;
@@ -313,7 +314,7 @@ async function processGmailRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics):
     return { imported: 0, metrics, done: true };
   }
   run.stage = 'listing';
-  await updateSyncRun(run, { stage: 'listing' });
+  await updateSyncRun(run, { stage: 'listing' }, client);
   const tokens = decryptJson<GmailTokenBlob>(mb.tokenBlobEncrypted);
   const oauth = new OAuth2Client({ clientId, clientSecret });
   oauth.setCredentials({
@@ -322,7 +323,7 @@ async function processGmailRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics):
   });
   const fresh = await oauth.getAccessToken();
   const accessToken = fresh?.token || tokens.access_token;
-  const cursor = await getOrCreateMailboxCursor(mb);
+  const cursor = await getOrCreateMailboxCursor(mb, client);
   let backfill = (cursor.backfill as GmailBackfillCursor | null) || null;
   const isBackfillMode = run.mode === 'full' || run.mode === 'quick';
   if (!backfill && isBackfillMode) {
@@ -341,8 +342,8 @@ async function processGmailRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics):
   let done = false;
   if (isBackfillMode && backfill && !backfill.done) {
     run.stage = 'fetching';
-    await updateSyncRun(run, { stage: 'fetching' });
-    const result = await gmailBackfillTick(mb, accessToken, backfill);
+    await updateSyncRun(run, { stage: 'fetching' }, client);
+    const result = await gmailBackfillTick(mb, accessToken, backfill, client);
     imported += result.imported;
     backfill = result.cursor;
     nextMetrics.gmailCalls = (nextMetrics.gmailCalls || 0) + result.apiCalls;
@@ -361,8 +362,8 @@ async function processGmailRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics):
       };
     }
     run.stage = 'fetching';
-    await updateSyncRun(run, { stage: 'fetching' });
-    const result = await gmailDeltaTick(mb, accessToken, delta);
+    await updateSyncRun(run, { stage: 'fetching' }, client);
+    const result = await gmailDeltaTick(mb, accessToken, delta, client);
     imported += result.imported;
     delta = result.cursor;
     nextMetrics.gmailCalls = (nextMetrics.gmailCalls || 0) + result.apiCalls;
@@ -372,19 +373,19 @@ async function processGmailRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics):
     done = true;
   }
   run.stage = 'upserting';
-  await updateSyncRun(run, { stage: 'upserting' });
+  await updateSyncRun(run, { stage: 'upserting' }, client);
   cursor.backfill = backfill;
   cursor.delta = delta;
-  await saveMailboxCursor(cursor);
+  await saveMailboxCursor(cursor, client);
   if (run.mode === 'full' && backfill && backfill.done) {
     done = true;
   }
   run.stage = 'aggregating';
-  await updateSyncRun(run, { stage: 'aggregating' });
+  await updateSyncRun(run, { stage: 'aggregating' }, client);
   return { imported, metrics: nextMetrics, done };
 }
 
-async function gmailBackfillTick(mb: Mailbox, accessToken: string, cursor: GmailBackfillCursor): Promise<{ imported: number; cursor: GmailBackfillCursor; apiCalls: number; quotaUnits: number }> {
+async function gmailBackfillTick(mb: Mailbox, accessToken: string, cursor: GmailBackfillCursor, client?: SupabaseClient): Promise<{ imported: number; cursor: GmailBackfillCursor; apiCalls: number; quotaUnits: number }> {
   const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages');
   listUrl.searchParams.set('maxResults', '500');
   if (cursor.pageToken) listUrl.searchParams.set('pageToken', cursor.pageToken);
@@ -420,7 +421,7 @@ async function gmailBackfillTick(mb: Mailbox, accessToken: string, cursor: Gmail
       receivedAt: isNaN(dateVal) ? Date.now() : dateVal,
       listUnsubscribe: headers['List-Unsubscribe'],
       listUnsubscribePost: headers['List-Unsubscribe-Post'],
-    });
+    }, client);
     imported++;
     if (typeof msg.historyId === 'string') {
       lastHistoryId = msg.historyId;
@@ -450,7 +451,7 @@ async function gmailBackfillTick(mb: Mailbox, accessToken: string, cursor: Gmail
   };
 }
 
-async function gmailDeltaTick(mb: Mailbox, accessToken: string, cursor: GmailDeltaCursor): Promise<{ imported: number; cursor: GmailDeltaCursor; apiCalls: number; quotaUnits: number }> {
+async function gmailDeltaTick(mb: Mailbox, accessToken: string, cursor: GmailDeltaCursor, client?: SupabaseClient): Promise<{ imported: number; cursor: GmailDeltaCursor; apiCalls: number; quotaUnits: number }> {
   if (!cursor.lastHistoryId) {
     return { imported: 0, cursor, apiCalls: 0, quotaUnits: 0 };
   }
@@ -527,7 +528,7 @@ async function gmailDeltaTick(mb: Mailbox, accessToken: string, cursor: GmailDel
       receivedAt: isNaN(dateVal) ? Date.now() : dateVal,
       listUnsubscribe: headers['List-Unsubscribe'],
       listUnsubscribePost: headers['List-Unsubscribe-Post'],
-    });
+    }, client);
     imported++;
   }
 
@@ -543,7 +544,7 @@ async function gmailDeltaTick(mb: Mailbox, accessToken: string, cursor: GmailDel
   };
 }
 
-async function processOutlookRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics): Promise<{ imported: number; metrics: SyncMetrics; done: boolean }> {
+async function processOutlookRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics, client?: SupabaseClient): Promise<{ imported: number; metrics: SyncMetrics; done: boolean }> {
   type OutlookTokenBlob = { accessToken: string | null; refreshToken: string; expiresOn: string | null };
   const clientId = process.env.MS_OAUTH_CLIENT_ID as string | undefined;
   const clientSecret = process.env.MS_OAUTH_CLIENT_SECRET as string | undefined;
@@ -551,10 +552,10 @@ async function processOutlookRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics
     return { imported: 0, metrics, done: true };
   }
   run.stage = 'listing';
-  await updateSyncRun(run, { stage: 'listing' });
+  await updateSyncRun(run, { stage: 'listing' }, client);
   const tokenBlob = decryptJson<OutlookTokenBlob>(mb.tokenBlobEncrypted);
   let accessToken: string | null = tokenBlob.accessToken || null;
-  const cursor = await getOrCreateMailboxCursor(mb);
+  const cursor = await getOrCreateMailboxCursor(mb, client);
   let backfill = cursor.backfill as GraphBackfillCursor | null;
   let delta = cursor.delta as GraphDeltaCursor | null;
   if (run.mode === 'full' && !backfill) {
@@ -580,8 +581,8 @@ async function processOutlookRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics
   let done = false;
   if ((run.mode === 'full' || run.mode === 'quick') && backfill) {
     run.stage = 'fetching';
-    await updateSyncRun(run, { stage: 'fetching' });
-    const result = await outlookBackfillTick(mb, accessToken!, clientId, clientSecret, backfill);
+    await updateSyncRun(run, { stage: 'fetching' }, client);
+    const result = await outlookBackfillTick(mb, accessToken!, clientId, clientSecret, backfill, client);
     imported += result.imported;
     backfill = result.cursor;
     accessToken = result.accessToken;
@@ -591,8 +592,8 @@ async function processOutlookRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics
     }
   } else if (delta) {
     run.stage = 'fetching';
-    await updateSyncRun(run, { stage: 'fetching' });
-    const result = await outlookDeltaTick(mb, accessToken!, clientId, clientSecret, delta);
+    await updateSyncRun(run, { stage: 'fetching' }, client);
+    const result = await outlookDeltaTick(mb, accessToken!, clientId, clientSecret, delta, client);
     imported += result.imported;
     delta = result.cursor;
     accessToken = result.accessToken;
@@ -601,8 +602,8 @@ async function processOutlookRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics
   cursor.backfill = backfill;
   cursor.delta = delta;
   run.stage = 'upserting';
-  await updateSyncRun(run, { stage: 'upserting' });
-  await saveMailboxCursor(cursor);
+  await updateSyncRun(run, { stage: 'upserting' }, client);
+  await saveMailboxCursor(cursor, client);
   if (run.mode === 'full' && backfill && Object.values(backfill.folders).every(f => f.done)) {
     done = true;
   }
@@ -610,11 +611,11 @@ async function processOutlookRun(mb: Mailbox, run: SyncRun, metrics: SyncMetrics
     done = true;
   }
   run.stage = 'aggregating';
-  await updateSyncRun(run, { stage: 'aggregating' });
+  await updateSyncRun(run, { stage: 'aggregating' }, client);
   return { imported, metrics: nextMetrics, done };
 }
 
-async function outlookBackfillTick(mb: Mailbox, accessToken: string, clientId: string, clientSecret: string, cursor: GraphBackfillCursor): Promise<{ imported: number; cursor: GraphBackfillCursor; apiCalls: number; accessToken: string }> {
+async function outlookBackfillTick(mb: Mailbox, accessToken: string, clientId: string, clientSecret: string, cursor: GraphBackfillCursor, client?: SupabaseClient): Promise<{ imported: number; cursor: GraphBackfillCursor; apiCalls: number; accessToken: string }> {
   const foldersOrder = Object.keys(cursor.folders);
   let imported = 0;
   let apiCalls = 0;
@@ -623,13 +624,13 @@ async function outlookBackfillTick(mb: Mailbox, accessToken: string, clientId: s
     const fc = cursor.folders[key];
     if (fc.done) continue;
     const baseUrl = key === 'junk'
-      ? 'https://graph.microsoft.com/v1.0/me/mailFolders/JunkEmail/messages?$select=id,subject,receivedDateTime,from,toRecipients&$top=100'
-      : 'https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$select=id,subject,receivedDateTime,from,toRecipients&$top=100';
+      ? 'https://graph.microsoft.com/v1.0/me/mailFolders/JunkEmail/messages?$select=id,subject,receivedDateTime,from,toRecipients&$top=50'
+      : 'https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$select=id,subject,receivedDateTime,from,toRecipients&$top=50';
     const targetUrl = fc.nextLink || baseUrl;
     let res = await fetchWithRetry(targetUrl, { headers: { Authorization: `Bearer ${token}` } });
     apiCalls++;
     if (res.status === 401 || res.status === 403) {
-      const refreshed = await refreshOutlookToken(clientId, clientSecret, mb, token);
+      const refreshed = await refreshOutlookToken(clientId, clientSecret, mb, token, client);
       if (refreshed) {
         token = refreshed;
         res = await fetchWithRetry(targetUrl, { headers: { Authorization: `Bearer ${token}` } });
@@ -663,7 +664,7 @@ async function outlookBackfillTick(mb: Mailbox, accessToken: string, clientId: s
         receivedAt: isNaN(dateVal) ? Date.now() : dateVal,
         listUnsubscribe: headers['List-Unsubscribe'],
         listUnsubscribePost: headers['List-Unsubscribe-Post'],
-      });
+      }, client);
       imported++;
     }
     const nextLink = data['@odata.nextLink'] || null;
@@ -677,7 +678,7 @@ async function outlookBackfillTick(mb: Mailbox, accessToken: string, clientId: s
   return { imported, cursor, apiCalls, accessToken: token };
 }
 
-async function outlookDeltaTick(mb: Mailbox, accessToken: string, clientId: string, clientSecret: string, cursor: GraphDeltaCursor): Promise<{ imported: number; cursor: GraphDeltaCursor; apiCalls: number; accessToken: string }> {
+async function outlookDeltaTick(mb: Mailbox, accessToken: string, clientId: string, clientSecret: string, cursor: GraphDeltaCursor, client?: SupabaseClient): Promise<{ imported: number; cursor: GraphDeltaCursor; apiCalls: number; accessToken: string }> {
   const foldersOrder = Object.keys(cursor.folders);
   let imported = 0;
   let apiCalls = 0;
@@ -685,13 +686,13 @@ async function outlookDeltaTick(mb: Mailbox, accessToken: string, clientId: stri
   for (const key of foldersOrder) {
     const fc = cursor.folders[key];
     const baseUrl = key === 'junk'
-      ? 'https://graph.microsoft.com/v1.0/me/mailFolders/JunkEmail/messages/delta?$select=id,subject,receivedDateTime,from,toRecipients,internetMessageHeaders&$top=100'
-      : 'https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$select=id,subject,receivedDateTime,from,toRecipients,internetMessageHeaders&$top=100';
+      ? 'https://graph.microsoft.com/v1.0/me/mailFolders/JunkEmail/messages/delta?$select=id,subject,receivedDateTime,from,toRecipients,internetMessageHeaders&$top=50'
+      : 'https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$select=id,subject,receivedDateTime,from,toRecipients,internetMessageHeaders&$top=50';
     const targetUrl = fc.nextLink || fc.deltaLink || baseUrl;
     let res = await fetchWithRetry(targetUrl, { headers: { Authorization: `Bearer ${token}` } });
     apiCalls++;
     if (res.status === 401 || res.status === 403) {
-      const refreshed = await refreshOutlookToken(clientId, clientSecret, mb, token);
+      const refreshed = await refreshOutlookToken(clientId, clientSecret, mb, token, client);
       if (refreshed) {
         token = refreshed;
         res = await fetchWithRetry(targetUrl, { headers: { Authorization: `Bearer ${token}` } });
@@ -723,7 +724,7 @@ async function outlookDeltaTick(mb: Mailbox, accessToken: string, clientId: stri
         receivedAt: isNaN(dateVal) ? Date.now() : dateVal,
         listUnsubscribe: headers['List-Unsubscribe'],
         listUnsubscribePost: headers['List-Unsubscribe-Post'],
-      });
+      }, client);
       imported++;
     }
     const nextLink = data['@odata.nextLink'] || null;
@@ -740,7 +741,7 @@ async function outlookDeltaTick(mb: Mailbox, accessToken: string, clientId: stri
   return { imported, cursor, apiCalls, accessToken: token };
 }
 
-async function refreshOutlookToken(clientId: string, clientSecret: string, mb: Mailbox, currentToken: string | null): Promise<string | null> {
+async function refreshOutlookToken(clientId: string, clientSecret: string, mb: Mailbox, currentToken: string | null, client?: SupabaseClient): Promise<string | null> {
   type OutlookTokenBlob = { accessToken: string | null; refreshToken: string; expiresOn: string | null };
   const blob = decryptJson<OutlookTokenBlob>(mb.tokenBlobEncrypted);
   const form = new URLSearchParams({
@@ -764,7 +765,7 @@ async function refreshOutlookToken(clientId: string, clientSecret: string, mb: M
     refreshToken: tj.refresh_token || blob.refreshToken,
     expiresOn: tj.expires_in ? new Date(Date.now() + tj.expires_in * 1000).toISOString() : null,
   };
-  const supabase = await getServerSupabase();
+  const supabase = client || await getServerSupabase();
   await supabase
     .from('mailboxes')
     .update({

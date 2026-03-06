@@ -2,6 +2,7 @@ import { messagesTable, inventoryTable, emailIdentitiesTable, type Mailbox } fro
 import { classifyMessage } from '@/lib/server/classify';
 import { recordEvidenceAndInfer } from '@/lib/server/infer';
 import { extractRegistrableDomain } from '@/lib/server/domain';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 export async function upsertMessageAndInventory(mb: Mailbox, msg: {
   providerMsgId: string;
@@ -11,9 +12,9 @@ export async function upsertMessageAndInventory(mb: Mailbox, msg: {
   receivedAt: number;
   listUnsubscribe?: string;
   listUnsubscribePost?: string;
-}) {
+}, client?: SupabaseClient) {
   const msgId = `${mb.id}:${msg.providerMsgId}`;
-  const msgResult = await (await messagesTable()).upsert({
+  const msgResult = await (await messagesTable(client)).upsert({
     id: msgId,
     mailboxid: mb.id,
     providermsgid: msg.providerMsgId,
@@ -33,7 +34,7 @@ export async function upsertMessageAndInventory(mb: Mailbox, msg: {
   if (!rootDomain) return;
   const invId = `${mb.id}:${rootDomain}`;
 
-  const invSelect = await (await inventoryTable())
+  const invSelect = await (await inventoryTable(client))
     .select('id,msgcount,hasunsub,status')
     .eq('id', invId)
     .maybeSingle();
@@ -43,7 +44,7 @@ export async function upsertMessageAndInventory(mb: Mailbox, msg: {
   const invRow = invSelect.data as { id: string; msgcount: number | null; hasunsub: boolean | null; status: string | null } | null;
 
   if (!invRow) {
-    const insertResult = await (await inventoryTable()).insert({
+    const insertResult = await (await inventoryTable(client)).insert({
       id: invId,
       mailboxid: mb.id,
       rootdomain: rootDomain,
@@ -57,7 +58,7 @@ export async function upsertMessageAndInventory(mb: Mailbox, msg: {
       throw insertResult.error;
     }
   } else {
-    const updateResult = await (await inventoryTable()).update({
+    const updateResult = await (await inventoryTable(client)).update({
       lastseen: msg.receivedAt,
       msgcount: (invRow.msgcount ?? 0) + 1,
       hasunsub: !!invRow.hasunsub || !!msg.listUnsubscribe,
@@ -68,14 +69,14 @@ export async function upsertMessageAndInventory(mb: Mailbox, msg: {
     }
   }
 
-  const idsResult = await (await emailIdentitiesTable()).select('id').eq('mailboxid', mb.id).limit(1);
+  const idsResult = await (await emailIdentitiesTable(client)).select('id').eq('mailboxid', mb.id).limit(1);
   if (idsResult.error) {
     throw idsResult.error;
   }
   let emailIdentityId = idsResult.data && idsResult.data[0]?.id as string | undefined;
 
   if (!emailIdentityId) {
-    const insertIdentity = await (await emailIdentitiesTable()).insert({
+    const insertIdentity = await (await emailIdentitiesTable(client)).insert({
       id: `${mb.provider}:${mb.email.toLowerCase()}`,
       userid: mb.userId,
       email: mb.email,
@@ -109,5 +110,5 @@ export async function upsertMessageAndInventory(mb: Mailbox, msg: {
     from: msg.from,
     receivedAt: msg.receivedAt,
     signals: classification.signals,
-  });
+  }, client);
 }

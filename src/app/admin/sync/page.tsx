@@ -37,6 +37,7 @@ const runsFetcher = async ([url, token]: [string, string]): Promise<SyncRunsResp
 export default function AdminSyncPage() {
   const [token, setToken] = React.useState("");
   const [input, setInput] = React.useState("");
+  const [isAutoRunning, setIsAutoRunning] = React.useState(false);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -70,6 +71,15 @@ export default function AdminSyncPage() {
     });
     await mutate();
   };
+
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isAutoRunning && token) {
+      handleSyncTick(); // Run immediately
+      interval = setInterval(handleSyncTick, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [isAutoRunning, token]);
 
   const runs = data?.runs ?? [];
 
@@ -106,9 +116,19 @@ export default function AdminSyncPage() {
                   Latest runs across mailboxes, limited to 50 for metrics safety.
                 </CardDescription>
               </div>
-              <Button type="button" size="sm" onClick={handleSyncTick}>
-                Run sync-tick
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={isAutoRunning ? "destructive" : "secondary"}
+                  onClick={() => setIsAutoRunning(!isAutoRunning)}
+                >
+                  {isAutoRunning ? "Stop Auto-Run" : "Auto-Run (5s)"}
+                </Button>
+                <Button type="button" size="sm" onClick={handleSyncTick} disabled={isAutoRunning}>
+                  Run sync-tick
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>

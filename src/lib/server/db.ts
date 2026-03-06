@@ -1,4 +1,5 @@
 import { getServerSupabase } from '@/lib/server/supabase';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 export type Provider = 'gmail' | 'outlook';
 
@@ -79,17 +80,17 @@ export type MailboxCursor = {
   updatedAt: number;
 };
 
-export const mailboxesTable = async () => (await getServerSupabase()).from('mailboxes');
-export const messagesTable = async () => (await getServerSupabase()).from('messages');
-export const inventoryTable = async () => (await getServerSupabase()).from('inventory');
-export const emailIdentitiesTable = async () => (await getServerSupabase()).from('emailIdentities');
-export const accountsTable = async () => (await getServerSupabase()).from('accounts');
-export const accountEvidenceTable = async () => (await getServerSupabase()).from('accountEvidence');
-export const tasksTable = async () => (await getServerSupabase()).from('tasks');
-export const actionLogsTable = async () => (await getServerSupabase()).from('actionLogs');
-export const serviceAliasesTable = async () => (await getServerSupabase()).from('serviceAliases');
-export const syncRunsTable = async () => (await getServerSupabase()).from('sync_runs');
-export const mailboxCursorsTable = async () => (await getServerSupabase()).from('mailbox_cursors');
+export const mailboxesTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('mailboxes');
+export const messagesTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('messages');
+export const inventoryTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('inventory');
+export const emailIdentitiesTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('emailIdentities');
+export const accountsTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('accounts');
+export const accountEvidenceTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('accountEvidence');
+export const tasksTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('tasks');
+export const actionLogsTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('actionLogs');
+export const serviceAliasesTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('serviceAliases');
+export const syncRunsTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('sync_runs');
+export const mailboxCursorsTable = async (client?: SupabaseClient) => (client || await getServerSupabase()).from('mailbox_cursors');
 
 export async function upsertMailbox(mb: Omit<Mailbox, 'id'> & { id?: string }): Promise<Mailbox> {
   const id = mb.id || (mb.provider + ':' + mb.email.toLowerCase());
