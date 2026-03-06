@@ -12,6 +12,7 @@
     *   `SUPABASE_URL`: Your Supabase Project URL.
     *   `SUPABASE_ANON_KEY`: Your Supabase Anon Key.
     *   `SUPABASE_SERVICE_ROLE_KEY`: **Required for background sync**. This key is used by the background function to process emails for all users. It is never exposed to the client.
+    *   `ADMIN_APP_TOKEN`: **Required for admin access**. A secret string of your choice used to access `/admin/*` pages and admin APIs.
 
     > **Important**: Do not use `NEXT_PUBLIC_*` for Supabase on Netlify. Next.js will embed those values into client bundles, and Netlify can block deploys as “exposed secrets”. This app fetches the Supabase URL/key from a server route at runtime, so only `SUPABASE_URL` and `SUPABASE_ANON_KEY` are needed.
 
