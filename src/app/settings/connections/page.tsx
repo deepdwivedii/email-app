@@ -327,6 +327,18 @@ export default function ConnectionsSettingsPage() {
                             Error: {activeRun.error}
                           </p>
                         )}
+                        {activeRun.status === "needs_reauth" && (
+                          <div className="flex flex-col gap-1">
+                            <p className="text-xs text-destructive font-medium">
+                              Authentication failed. Please reconnect your inbox.
+                            </p>
+                            <Button variant="destructive" size="sm" asChild className="h-7 text-xs w-fit">
+                              <a href={reconnectUrl(m.provider)}>
+                                Reconnect Now
+                              </a>
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

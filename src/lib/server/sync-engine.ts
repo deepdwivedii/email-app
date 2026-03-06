@@ -299,10 +299,14 @@ export async function syncWorkerTick(maxMailboxesPerCycle = 50, client?: Supabas
     } catch (e: any) {
       const errorMessage = e?.message || String(e);
       const errorStack = e?.stack ? `\n${e.stack}` : '';
-      await updateSyncRun(run, {
-        status: 'error',
-        error: (errorMessage + errorStack).slice(0, 1000), // Limit length
-      }, client);
+      const isAuthError = errorMessage.includes('401') || errorMessage.includes('invalid_grant') || errorMessage.includes('Invalid Credentials');
+      
+      const patch: Partial<SyncRun> = {
+        status: isAuthError ? 'needs_reauth' : 'error',
+        error: (errorMessage + errorStack).slice(0, 1000),
+      };
+      
+      await updateSyncRun(run, patch, client);
     }
   }
   return { processed };
@@ -396,8 +400,11 @@ async function gmailBackfillTick(mb: Mailbox, accessToken: string, cursor: Gmail
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!listRes.ok) {
-    throw new Error(`Gmail list failed ${listRes.status}`);
-  }
+      if (listRes.status === 401) {
+        throw new Error('Gmail 401: Invalid Credentials');
+      }
+      throw new Error(`Gmail list failed ${listRes.status}`);
+    }
   const listJson: { messages?: Array<{ id: string }>; nextPageToken?: string; historyId?: string } = await listRes.json();
   const ids: string[] = (listJson.messages || []).map(m => m.id);
   const start = cursor.indexInPage;
