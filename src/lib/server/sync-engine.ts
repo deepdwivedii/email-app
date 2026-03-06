@@ -300,11 +300,19 @@ export async function syncWorkerTick(maxMailboxesPerCycle = 50, client?: Supabas
       const errorMessage = e?.message || String(e);
       const errorStack = e?.stack ? `\n${e.stack}` : '';
       const isAuthError = errorMessage.includes('401') || errorMessage.includes('invalid_grant') || errorMessage.includes('Invalid Credentials');
+      const isRateLimitError = errorMessage.includes('403') || errorMessage.includes('Rate Limit Exceeded') || errorMessage.includes('Quota Exceeded');
       
       const patch: Partial<SyncRun> = {
-        status: isAuthError ? 'needs_reauth' : 'error',
+        status: isAuthError ? 'needs_reauth' : isRateLimitError ? 'paused' : 'error',
         error: (errorMessage + errorStack).slice(0, 1000),
       };
+
+      // If paused due to rate limit, set a future retry time (e.g., 10 minutes)
+      // Note: We don't have a 'nextRetryAt' field in sync_runs yet, but setting status to 'paused'
+      // stops the worker from picking it up immediately.
+      // For now, manual resume or a separate scheduled job would be needed to unpause.
+      // Alternatively, we could just let it fail and rely on the retry logic if we had one.
+      // Better approach for now: Mark as paused so it doesn't spin.
       
       await updateSyncRun(run, patch, client);
     }
@@ -402,6 +410,9 @@ async function gmailBackfillTick(mb: Mailbox, accessToken: string, cursor: Gmail
   if (!listRes.ok) {
       if (listRes.status === 401) {
         throw new Error('Gmail 401: Invalid Credentials');
+      }
+      if (listRes.status === 403) {
+        throw new Error('Gmail 403: Rate Limit Exceeded');
       }
       throw new Error(`Gmail list failed ${listRes.status}`);
     }

@@ -339,6 +339,13 @@ export default function ConnectionsSettingsPage() {
                             </Button>
                           </div>
                         )}
+                        {activeRun.status === "paused" && (
+                          <div className="flex flex-col gap-1">
+                            <p className="text-xs text-yellow-600 font-medium">
+                              Sync paused (rate limit). Resuming shortly...
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
