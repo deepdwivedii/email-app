@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabase
     .from('sync_runs')
-    .select('id,userid,mailboxid,mode,status,stage,startedat,finishedat,importedcount,cursorsnapshot')
+    .select('id,userid,mailboxid,mode,status,stage,startedat,finishedat,importedcount,cursorsnapshot,error')
     .order('startedat', { ascending: false })
     .limit(limit);
 

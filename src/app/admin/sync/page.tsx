@@ -16,6 +16,7 @@ type SyncRunRow = {
   finishedat: number | null;
   importedcount: number | null;
   cursorsnapshot: unknown | null;
+  error?: string | null;
 };
 
 type SyncRunsResponse = {
@@ -64,6 +65,17 @@ export default function AdminSyncPage() {
   const handleSyncTick = async () => {
     if (!token) return;
     await fetch("/api/admin/sync-tick", {
+      method: "POST",
+      headers: {
+        "x-admin-token": token,
+      },
+    });
+    await mutate();
+  };
+
+  const handleRetry = async (runId: string) => {
+    if (!token) return;
+    await fetch(`/api/admin/sync-runs/${runId}/retry`, {
       method: "POST",
       headers: {
         "x-admin-token": token,
@@ -191,7 +203,21 @@ export default function AdminSyncPage() {
                             </div>
                           </td>
                           <td className="px-2 py-1 align-top">{run.mode}</td>
-                          <td className="px-2 py-1 align-top">{run.status}</td>
+                          <td className="px-2 py-1 align-top">
+                            <span className={run.status === 'error' ? 'text-red-600 font-medium' : ''}>
+                              {run.status}
+                            </span>
+                            {run.status === 'error' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-[10px] px-2 ml-2"
+                                onClick={() => handleRetry(run.id)}
+                              >
+                                Retry
+                              </Button>
+                            )}
+                          </td>
                           <td className="px-2 py-1 align-top">
                             {run.stage || ""}
                           </td>
@@ -203,7 +229,13 @@ export default function AdminSyncPage() {
                             {finished}
                           </td>
                           <td className="px-2 py-1 align-top text-xs text-muted-foreground">
-                            {metricsSummary || "–"}
+                            {run.error ? (
+                              <div className="text-red-600 max-w-[200px] break-words">
+                                {run.error}
+                              </div>
+                            ) : (
+                              metricsSummary || "–"
+                            )}
                           </td>
                         </tr>
                       );

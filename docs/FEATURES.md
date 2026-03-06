@@ -1,4 +1,4 @@
-Atlas App – Implemented Features (from code)
+Atlas App – Implemented Features (Current Codebase)
 
 ## Core Application Shell
 - Global layout with sticky header, logo, main navigation, and toast system.
@@ -43,22 +43,38 @@ Atlas App – Implemented Features (from code)
 - Global merged view toggle that sets merged mode on the active mailbox.
 
 ## Sync Engine (/api/sync)
-- Requires Supabase user and `mb` cookie when present.
-- Determines target mailboxes (active only or all for user).
-- Gmail sync:
+- **Background Sync (Netlify Functions)**:
+  - Dedicated background function `netlify/functions/sync-background.ts` running up to 15 minutes.
+  - Triggered via `/api/jobs/sync-background` (requires `SUPABASE_SERVICE_ROLE_KEY` internally).
+  - Uses `syncWorkerTick` to process mailboxes in round-robin batches (50 items/tick).
+  - Bypasses RLS using a service role Supabase client for reliable background execution.
+- **Manual/Foreground Sync**:
+  - `POST /api/sync` triggers an immediate, shorter sync run (capped execution time).
+- **Gmail Sync Logic**:
   - Uses stored encrypted tokens with `google-auth-library`.
+  - Batch size reduced to 50 messages/tick for reliability on serverless.
   - Fetches recent message IDs and header metadata only.
   - Writes `messages` rows with From/To/Subject/Date/List-Unsubscribe headers.
   - Maintains `inventory` per root domain with counts and last seen timestamps.
-- Outlook sync:
+- **Outlook Sync Logic**:
   - Uses Graph API `/me/messages` and `/me/messages/{id}`.
+  - Batch size reduced to 50 messages/tick.
   - Refreshes tokens via Microsoft OAuth2 if needed.
   - Writes messages and updates inventory per domain similar to Gmail.
-- Account inference:
+- **Account Inference**:
   - For each message, calls classifier and evidence/inference logic to:
     - Record `accountEvidence` with signals and weights.
     - Upsert `accounts` with confidence scores and explanations.
-- Updates `lastSyncAt` on mailboxes and returns counts + errors to the client.
+  - Updates `lastSyncAt` on mailboxes.
+
+## Admin Console (/admin/sync)
+- Protected by `ADMIN_APP_TOKEN` (via `x-admin-token` header).
+- **Sync Monitor**:
+  - Lists recent sync runs with status, stage, imported count, and metrics.
+  - Displays full error messages for failed runs.
+- **Controls**:
+  - "Run sync-tick" button to manually trigger a single worker tick.
+  - "Auto-Run (5s)" toggle to continuously trigger ticks from the UI for testing/debugging.
 
 ## Dashboard (/dashboard)
 - Auth-protected overview page for:
@@ -202,4 +218,3 @@ Atlas App – Implemented Features (from code)
 - Global UI components based on shadcn + Radix (buttons, cards, sheets, dialogs, tables, etc.).
 - Custom toast system with limited concurrent toasts and long display time.
 - Placeholder data and types for emails and domains used in UI components when underlying data is absent.
-

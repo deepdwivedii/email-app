@@ -297,9 +297,11 @@ export async function syncWorkerTick(maxMailboxesPerCycle = 50, client?: Supabas
       }
       processed++;
     } catch (e: any) {
+      const errorMessage = e?.message || String(e);
+      const errorStack = e?.stack ? `\n${e.stack}` : '';
       await updateSyncRun(run, {
         status: 'error',
-        error: e?.message || String(e),
+        error: (errorMessage + errorStack).slice(0, 1000), // Limit length
       }, client);
     }
   }
